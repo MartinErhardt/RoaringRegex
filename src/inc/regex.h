@@ -46,7 +46,7 @@ namespace Regex{
         NFA(NFA&& to_move);
         NFA(uint32_t cur_n);                                    //create empty NFA
         NFA(uint32_t cur_n,char c);                             //create NFA accepting just c
-        NFA& operator=(NFA& other){return other;}               //FIXME quite a hack(not a real copy assignment)
+        NFA& operator=(NFA& other);
         NFA& operator=(NFA&& other);
         static NFA build_NFA(const char* p);
         static NFA bracket_expression(const char* start, int* i,uint32_t* cur_n,int ps,const char *p);

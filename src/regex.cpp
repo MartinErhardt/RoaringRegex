@@ -30,10 +30,25 @@ NFA::NFA(const NFA& to_copy): states(to_copy.states),
         memcpy(select_for_fastunion, to_copy.select_for_fastunion, states.size()*sizeof(Roaring*));
     }
 }
-NFA& NFA::operator=(NFA&&other){
+NFA& NFA::operator=(NFA&other){
+    states=other.states;
+    initial_state=other.initial_state;
+    final_states=other.final_states;
+    current_states=other.current_states;
+    if(other.gather_for_fastunion){
+        gather_for_fastunion=new (std::align_val_t{ALIGN}) uint32_t [states.size()];
+        select_for_fastunion=new (std::align_val_t{ALIGN}) Roaring*[states.size()];
+        memcpy(gather_for_fastunion, other.gather_for_fastunion, states.size()*sizeof(uint32_t));
+        memcpy(select_for_fastunion, other.select_for_fastunion, states.size()*sizeof(Roaring*));
+    }
+    return *this;
+}
+NFA& NFA::operator=(NFA&& other){
     states=std::move(other.states);
     current_states=std::move(other.current_states);
     final_states=std::move(other.final_states);
+    other.states.push_back(state{});
+    other.final_states=Roaring::bitmapOf(other.initial_state);
     initial_state=other.initial_state;
     gather_for_fastunion=other.gather_for_fastunion;
     select_for_fastunion=other.select_for_fastunion;
@@ -42,13 +57,16 @@ NFA& NFA::operator=(NFA&&other){
     return *this;
 }
 NFA::NFA(uint32_t cur_n):final_states(std::move(Roaring::bitmapOf(cur_n))),
-                         initial_state(cur_n){}
+                         initial_state(cur_n){
+    states.push_back(state{});
+}
 NFA::NFA(uint32_t cur_n,char c):
                         final_states(std::move(Roaring::bitmapOf(cur_n+1))),
                         initial_state(cur_n){
     state new_state;
     new_state.tr[(int)c]=Roaring::bitmapOf(cur_n+1);
     states.push_back(std::move(new_state));
+    states.push_back(state{});
 }
 
 NFA::~NFA(){
@@ -68,27 +86,27 @@ NFA NFA::build_NFA(const char* p){
     int ps=strlen(p);
     uint32_t cur_n=0;
     auto clear_stack=[&](){
-        NFA& cur_nfa=nfas.top();
+        NFA* cur_nfa=&nfas.top();
         while(nfas.size()>1&&ops.top()!=BRACKETS){
             //cur_n-=nfas.top().states.size();
             nfas.pop();
             ops.pop();
-            if(ops.top()==CONCATENATION)   nfas.top()*=cur_nfa;
+            if(ops.top()==CONCATENATION)   nfas.top()*=(*cur_nfa);
             else if(ops.top()==OR){
                 NFA intermediate(std::move(nfas.top()));
                 nfas.pop();
                 ops.pop();
-                cur_nfa=nfas.top();
+                cur_nfa=&nfas.top();
                 while(nfas.size()>1&&ops.top()==CONCATENATION){
                     nfas.pop();
                     ops.pop();
-                    nfas.top()*=cur_nfa;
-                    cur_nfa=nfas.top();
+                    nfas.top()*=(*cur_nfa);
+                    cur_nfa=&nfas.top();
                 }
                 nfas.top()|=intermediate;
             }
             //nfas.top().op_eval(cur_op)(cur_nfa);
-            cur_nfa=nfas.top();
+            cur_nfa=&nfas.top();
         }
     };
     auto repeat=[&](){
@@ -156,11 +174,11 @@ NFA NFA::build_NFA(const char* p){
             }
             case '^':
             case '$':
-                nfas.push(NFA(cur_n++,'\0'));
+                nfas.push(NFA(cur_n+=2,'\0'));
                 ops.push(CONCATENATION);
                 break;
             default:
-                nfas.push(NFA(cur_n++,p[i++]));
+                nfas.push(NFA(cur_n+=2,p[i++]));
                 ops.push(CONCATENATION);
                 break;
         }
