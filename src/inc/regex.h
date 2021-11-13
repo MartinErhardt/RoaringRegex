@@ -7,7 +7,7 @@
 #include "../../CRoaring/roaring.c"
 namespace Regex{
     typedef struct State{
-        roaring::Roaring tr[512];   //0-0xFF         forward transition
+        Roaring tr[512]={};   //0-0xFF         forward transition
                                     //0x100-0x1FF    backward transition(relevant for FRegex iterator dereference) Also relevant for "quick" NFA collocation
         State (){}
         State& operator=(const State& s){
@@ -32,11 +32,11 @@ namespace Regex{
     public:
         bool start_early=false;
         std::vector<state>  states;
-        roaring::Roaring    current_states;
-        roaring::Roaring    final_states;
+        Roaring    current_states;
+        Roaring    final_states;
         uint32_t            initial_state;
         uint32_t*           gather_for_fastunion=nullptr;       //TODO make class
-        roaring::Roaring**  select_for_fastunion=nullptr;       //TODO make struct
+        Roaring**  select_for_fastunion=nullptr;       //TODO make struct
         /*
         const std::unordered_map<operation, nfa_operation> op_eval {
                 {CONCATENATION, this.operator*=},

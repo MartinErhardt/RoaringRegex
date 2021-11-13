@@ -3,10 +3,10 @@ OBJS = $(addsuffix .o,$(basename $(SRCS)))
 
 CXX = g++
 
-CXXFLAGS = -std=c++17 -Wall -Werror -oFast
+CXXFLAGS = -std=c++17 -Wall -Werror -g -fsanitize=address
 all: | CRoaring fast_regex
 fast_regex:  $(OBJS)
-	$(CXX) -o $@ $^
+	$(CXX) -o $@ $^ -fsanitize=address
 CRoaring:
 	git clone https://github.com/RoaringBitmap/CRoaring.git
 	cd CRoaring && ./amalgamation.sh

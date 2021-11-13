@@ -7,6 +7,7 @@
 #include "../CRoaring/roaring.hh"
 #include "inc/regex.h"
 #include<stack>
+#include <iostream>
 using namespace roaring;
 using namespace Regex;
 #define ALIGN 128
@@ -36,7 +37,7 @@ NFA& NFA::operator=(NFA&other){
     final_states=other.final_states;
     current_states=other.current_states;
     if(other.gather_for_fastunion){
-        gather_for_fastunion=new (std::align_val_t{ALIGN}) uint32_t [states.size()];
+        gather_for_fastunion=new (std::align_val_t{ALIGN}) uint32_t[states.size()];
         select_for_fastunion=new (std::align_val_t{ALIGN}) Roaring*[states.size()];
         memcpy(gather_for_fastunion, other.gather_for_fastunion, states.size()*sizeof(uint32_t));
         memcpy(select_for_fastunion, other.select_for_fastunion, states.size()*sizeof(Roaring*));
@@ -48,7 +49,9 @@ NFA& NFA::operator=(NFA&& other){
     current_states=std::move(other.current_states);
     final_states=std::move(other.final_states);
     other.states.push_back(state{});
-    other.final_states=Roaring::bitmapOf(other.initial_state);
+    //std::cout<<"initial state: "<<std::endl;
+    other.final_states=Roaring::bitmapOf(1,other.initial_state);
+    //std::cout<<"Success!"<<std::endl;
     initial_state=other.initial_state;
     gather_for_fastunion=other.gather_for_fastunion;
     select_for_fastunion=other.select_for_fastunion;
@@ -56,28 +59,66 @@ NFA& NFA::operator=(NFA&& other){
     other.select_for_fastunion=nullptr;
     return *this;
 }
-NFA::NFA(uint32_t cur_n):final_states(std::move(Roaring::bitmapOf(cur_n))),
+NFA::NFA(uint32_t cur_n):final_states(std::move(Roaring::bitmapOf(1,cur_n))),
                          initial_state(cur_n){
     states.push_back(state{});
 }
 NFA::NFA(uint32_t cur_n,char c):
-                        final_states(std::move(Roaring::bitmapOf(cur_n+1))),
+                        final_states(Roaring::bitmapOf(1,cur_n+1)),
                         initial_state(cur_n){
-    state new_state;
-    new_state.tr[(int)c]=Roaring::bitmapOf(cur_n+1);
-    states.push_back(std::move(new_state));
-    states.push_back(state{});
+    std::cout<<"single character: "<<c<<"\tcur_n: "<<cur_n<<std::endl;
+    //std::cout<<"test: ";
+    //Roaring::bitmapOf(1,2,3,4,5,6).printf();
+    //std::cout<<std::endl;
+    state new_state1{};
+    state new_state2{};
+    new_state1.tr[(int)c]=Roaring::bitmapOf(1,cur_n+1);
+    new_state2.tr[0x100+(int)c]=Roaring::bitmapOf(1,cur_n);
+    states.push_back(std::move(new_state1));
+    states.push_back(std::move(new_state2));
 }
 
 NFA::~NFA(){
-    operator delete(gather_for_fastunion, std::align_val_t{ALIGN});
-    operator delete(select_for_fastunion, std::align_val_t{ALIGN});
+    if(gather_for_fastunion){
+        //std::cout<<"gather: "<<gather_for_fastunion<<std::endl;
+        //std::cout<<"select: "<<select_for_fastunion<<std::endl;
+        operator delete[](gather_for_fastunion, std::align_val_t{ALIGN});
+        operator delete[](select_for_fastunion, std::align_val_t{ALIGN});
+    }
 }
 NFA NFA::bracket_expression(const char* start, int* i,uint32_t* cur_n,int ps,const char *p){
     bool escaped=false;
     while(*i<ps&&!(!(escaped^=(p[*i]=='\\'))&&p[(*i)++]==']'));
     if(*i==ps) throw std::runtime_error("invalid expression!");
     return NFA((*cur_n)++);
+}
+std::ostream& operator<<(std::ostream& out, NFA const& nfa){
+    out<<"initial state: "<<nfa.initial_state<<std::endl;
+    out<<"final states: ";
+    nfa.final_states.printf();
+    out<<std::endl;
+    for(uint32_t i=0;i<nfa.states.size();i++){
+        out<<"state: "<<i+nfa.initial_state<<std::endl;
+        out<<"forward transitions: "<<std::endl;
+        for(unsigned char c=0; c<0xFF;c++){
+            const Roaring& r=nfa.states[i].tr[(int)c];
+            //std::cout<<(int) c<<std::endl;
+            if(!r.cardinality()) continue;
+            out<<c<<": ";
+            r.printf();
+            out<<std::endl;
+        }
+        out<<"backward transitions: "<<std::endl;
+        for(unsigned char c=0; c<0xFF;c++){
+            const Roaring& r=nfa.states[i].tr[0x100+((int)c)];
+            //std::cout<<(int) c<<std::endl;
+            if(!r.cardinality()) continue;
+            out<<c<<": ";
+            r.printf();
+            out<<std::endl;
+        }
+    }
+    return out;
 }
 NFA NFA::build_NFA(const char* p){
     bool escaped=false;
@@ -86,28 +127,32 @@ NFA NFA::build_NFA(const char* p){
     int ps=strlen(p);
     uint32_t cur_n=0;
     auto clear_stack=[&](){
-        NFA* cur_nfa=&nfas.top();
+        NFA cur_nfa(std::move(nfas.top()));
         while(nfas.size()>1&&ops.top()!=BRACKETS){
             //cur_n-=nfas.top().states.size();
+            std::cout<<"################################# intermediate NFA: "<<std::endl;
+            std::cout<<cur_nfa;
             nfas.pop();
             ops.pop();
-            if(ops.top()==CONCATENATION)   nfas.top()*=(*cur_nfa);
+            if(ops.top()==CONCATENATION)   nfas.top()*=cur_nfa;
             else if(ops.top()==OR){
                 NFA intermediate(std::move(nfas.top()));
                 nfas.pop();
                 ops.pop();
-                cur_nfa=&nfas.top();
+                cur_nfa=std::move(nfas.top());
                 while(nfas.size()>1&&ops.top()==CONCATENATION){
                     nfas.pop();
                     ops.pop();
-                    nfas.top()*=(*cur_nfa);
-                    cur_nfa=&nfas.top();
+                    nfas.top()*=cur_nfa;
+                    cur_nfa=std::move(nfas.top());
                 }
                 nfas.top()|=intermediate;
             }
-            //nfas.top().op_eval(cur_op)(cur_nfa);
-            cur_nfa=&nfas.top();
+            cur_nfa=std::move(nfas.top());
         }
+        nfas.pop();
+        nfas.push(std::move(cur_nfa));
+        ops.top()=CONCATENATION;
     };
     auto repeat=[&](){
         nfas.push(*nfas.top()+nfas.top().states.size());
@@ -174,12 +219,17 @@ NFA NFA::build_NFA(const char* p){
             }
             case '^':
             case '$':
-                nfas.push(NFA(cur_n+=2,'\0'));
+                nfas.push(NFA(cur_n,'\0'));
                 ops.push(CONCATENATION);
+                cur_n+=2;
                 break;
             default:
-                nfas.push(NFA(cur_n+=2,p[i++]));
+                nfas.push(NFA(cur_n,p[i++]));
                 ops.push(CONCATENATION);
+                //std::cout<<"################################# intermediate NFA: "<<p[i-1]<<std::endl;
+                //std::cout<<nfas.top();
+                //std::cout<<nfas.top();
+                cur_n+=2;
                 break;
         }
     }
@@ -191,7 +241,7 @@ NFA NFA::build_NFA(const char* p){
     new_nfa.select_for_fastunion=new(std::align_val_t{ALIGN}) Roaring*[new_nfa.states.size()];
     return new_nfa;
 }
-#define idx(c,fwd) ([&]{                          \
+#define idx(c,fwd) ([&]{                         \
           if constexpr (fwd) return ((size_t)c); \
           else return ((size_t)c)+0x100;         \
         }())
@@ -202,7 +252,7 @@ NFA& NFA::shift(char c){
     for(uint32_t i=0;i<current_states_cardinality;i++)
         select_for_fastunion[i]=&states[gather_for_fastunion[i]-initial_state].tr[idx(c,fwd)];
     current_states = Roaring::fastunion(current_states_cardinality,
-                                        const_cast<const roaring::Roaring**>(select_for_fastunion));
+                                        const_cast<const Roaring**>(select_for_fastunion));
     return *this;
 }
 NFA& NFA::operator<<(char c)
@@ -220,21 +270,28 @@ template<bool fwd>
 void NFA::skip(uint32_t n,uint32_t k){
     uint32_t to_skip=fwd?k-initial_state:n-initial_state;
     uint32_t fixed=fwd?n-initial_state:k-initial_state;
-    for(char c=0;c<0xFF;c++){
+    std::cout<<"to_skip: "<<to_skip<<"\tfixed: "<<fixed<<std::endl;
+    for(unsigned char c=0;c<0xFF;c++){
         states[fixed].tr[idx(c,fwd)]|=states[to_skip].tr[idx(c,fwd)];
         for(Roaring::const_iterator j=states[to_skip].tr[idx(c,fwd)].begin();
                                     j!=states[to_skip].tr[idx(c,fwd)].end();j++){
             //constexpr if(!fwd) states[j].tr[idx(*j,!fwd)].remove(to_skip);
-            states[*j-initial_state].tr[idx(c,!fwd)].add(fixed);
+            states[*j-initial_state].tr[idx(c,!fwd)].add(fixed+initial_state);
         }
     }
 }
 NFA& NFA::operator*=(NFA& other){
-    uint32_t next_initial=states.size();
-    final_states=other.final_states;
+    std::cout<<"################################# merge NFA: "<<std::endl;
+    std::cout<<other;
+    std::cout<<"################################# merge into NFA: "<<std::endl;
+    std::cout<<*this;
+    uint32_t next_initial=other.initial_state;
+    //std::cout<<"concat1"<<std::endl;
     states.insert( states.end(), other.states.begin(), other.states.end() );
+    //std::cout<<"concat2"<<std::endl;
     for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++)
         skip<false>(*i,next_initial);
+    final_states=other.final_states;
     if(final_states.contains(initial_state)) skip<true>(initial_state,next_initial);
     return *this;
 }
@@ -252,8 +309,8 @@ NFA& NFA::operator*(unsigned int n){
     final_states.add(initial_state);
     return *this;
 }
-roaring::Roaring operator+(roaring::Roaring& set,int32_t rotate){
-    roaring::Roaring ret;
+Roaring operator+(Roaring& set,int32_t rotate){
+    Roaring ret;
     for(Roaring::const_iterator i = set.begin(); i != set.end(); i++)
         ret.add(*i+rotate);
     return ret;
@@ -278,5 +335,11 @@ int main(){
             return -1;
     text[strlen(text)-1]='\0';
     pattern[strlen(pattern)-1]='\0';
+    NFA my_nfa=NFA::build_NFA(pattern);
+    std::cout<<"################################# final NFA: "<<std::endl;
+    std::cout<<my_nfa;
+    //std::cout<<"size: "<<sizeof(my_nfa)<<std::endl;
+    free(text);
+    free(pattern);
     return 0;
 }
