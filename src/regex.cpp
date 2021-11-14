@@ -32,10 +32,10 @@ NFA::NFA(const NFA& to_copy): states(to_copy.states),
     }
 }
 NFA& NFA::operator=(NFA&other){
-    states=other.states;
-    initial_state=other.initial_state;
-    final_states=other.final_states;
-    current_states=other.current_states;
+    states          =other.states;
+    initial_state   =other.initial_state;
+    final_states    =other.final_states;
+    current_states  =other.current_states;
     if(other.gather_for_fastunion){
         gather_for_fastunion=new (std::align_val_t{ALIGN}) uint32_t[states.size()];
         select_for_fastunion=new (std::align_val_t{ALIGN}) Roaring*[states.size()];
@@ -45,9 +45,9 @@ NFA& NFA::operator=(NFA&other){
     return *this;
 }
 NFA& NFA::operator=(NFA&& other){
-    states=std::move(other.states);
-    current_states=std::move(other.current_states);
-    final_states=std::move(other.final_states);
+    states          =std::move(other.states);
+    current_states  =std::move(other.current_states);
+    final_states    =std::move(other.final_states);
     other.states.push_back(state{});
     //std::cout<<"initial state: "<<std::endl;
     other.final_states=Roaring::bitmapOf(1,other.initial_state);
@@ -120,20 +120,38 @@ std::ostream& operator<<(std::ostream& out, NFA const& nfa){
     }
     return out;
 }
+Roaring operator+(Roaring& set,int32_t rotate){
+    Roaring ret;
+    for(Roaring::const_iterator i = set.begin(); i != set.end(); i++)
+        ret.add(*i+rotate);
+    return ret;
+}
+NFA operator+(NFA& input,int rotate){
+    NFA ret(input.initial_state+rotate);
+    ret.states.reserve(input.states.size());
+    for (uint32_t i=0;i<input.states.size(); i++){
+        ret.states.push_back(state{});
+        for(uint32_t c=0;c<0x200;c++) ret.states[i].tr[c]=std::move(input.states[i].tr[c]+rotate);
+    }
+    ret.final_states=input.final_states+rotate;
+    return ret;
+}
 NFA NFA::build_NFA(const char* p){
     bool escaped=false;
     std::stack<NFA> nfas;
     std::stack<operation> ops;
+    ops.push(CONCATENATION);
     int ps=strlen(p);
     uint32_t cur_n=0;
     auto clear_stack=[&](){
         NFA cur_nfa(std::move(nfas.top()));
+        ops.pop();
         while(nfas.size()>1&&ops.top()!=BRACKETS){
-            //cur_n-=nfas.top().states.size();
+            cur_n-=nfas.top().states.size();
             std::cout<<"################################# intermediate NFA: "<<std::endl;
             std::cout<<cur_nfa;
+            std::cout<<"op: "<<ops.top()<<std::endl;
             nfas.pop();
-            ops.pop();
             if(ops.top()==CONCATENATION)   nfas.top()*=cur_nfa;
             else if(ops.top()==OR){
                 NFA intermediate(std::move(nfas.top()));
@@ -148,14 +166,18 @@ NFA NFA::build_NFA(const char* p){
                 }
                 nfas.top()|=intermediate;
             }
+            ops.pop();
             cur_nfa=std::move(nfas.top());
         }
+        std::cout<<"################################# intermediate final NFA: "<<std::endl;
+        std::cout<<cur_nfa;
         nfas.pop();
+        ops.pop();
         nfas.push(std::move(cur_nfa));
-        ops.top()=CONCATENATION;
     };
     auto repeat=[&](){
-        nfas.push(*nfas.top()+nfas.top().states.size());
+        //std::cout<<"rotate PLS!"<<std::endl;
+        nfas.push(nfas.top()+(int32_t)nfas.top().states.size());
         cur_n+=nfas.top().states.size();
         ops.push(CONCATENATION);
     };
@@ -169,7 +191,8 @@ NFA NFA::build_NFA(const char* p){
                 ops.push(CONCATENATION);
                 break;
             case '(':
-                nfas.push(NFA(cur_n++));
+                //nfas.push(NFA(cur_n+1));
+                //nfas.top().final_states.add(cur_n-1);
                 ops.push(BRACKETS);
                 i++;
                 break;
@@ -184,11 +207,14 @@ NFA NFA::build_NFA(const char* p){
                 break;
             case '*':
                 nfas.top()*1;
+                i++;
                 break;
             case '+':
                 repeat();
+                //std::cout<<"Top"<<std::endl;
+                //std::cout<<nfas.top();
                 nfas.top()*1;
-                ops.push(CONCATENATION);
+                i++;
                 break;
             case '?':
                 nfas.top()|=NFA(cur_n++);
@@ -270,12 +296,12 @@ template<bool fwd>
 void NFA::skip(uint32_t n,uint32_t k){
     uint32_t to_skip=fwd?k-initial_state:n-initial_state;
     uint32_t fixed=fwd?n-initial_state:k-initial_state;
-    std::cout<<"to_skip: "<<to_skip<<"\tfixed: "<<fixed<<std::endl;
+    //std::cout<<"to_skip: "<<to_skip<<"\tfixed: "<<fixed<<std::endl;
     for(unsigned char c=0;c<0xFF;c++){
-        states[fixed].tr[idx(c,fwd)]|=states[to_skip].tr[idx(c,fwd)];
-        for(Roaring::const_iterator j=states[to_skip].tr[idx(c,fwd)].begin();
+        states[fixed].tr[idx(c,fwd)] |=states[to_skip].tr[idx(c,fwd)];
+        for(Roaring::const_iterator j =states[to_skip].tr[idx(c,fwd)].begin();
                                     j!=states[to_skip].tr[idx(c,fwd)].end();j++){
-            //constexpr if(!fwd) states[j].tr[idx(*j,!fwd)].remove(to_skip);
+            //std::cout<<"inbound: "<<*j;
             states[*j-initial_state].tr[idx(c,!fwd)].add(fixed+initial_state);
         }
     }
@@ -304,28 +330,13 @@ NFA& NFA::operator|=(NFA& other){
 }
 NFA& NFA::operator*(unsigned int n){
     if(!n) return *this;
-    for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++)
+    //final_states.printf();
+    for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++){
+        //final_states.printf();
         skip<false>(*i,initial_state);
+    }
     final_states.add(initial_state);
     return *this;
-}
-Roaring operator+(Roaring& set,int32_t rotate){
-    Roaring ret;
-    for(Roaring::const_iterator i = set.begin(); i != set.end(); i++)
-        ret.add(*i+rotate);
-    return ret;
-}
-NFA NFA::operator+(int32_t rotate){
-    NFA ret(initial_state+rotate);
-    ret.states.reserve(states.size());
-    for (uint32_t i=0;i<states.size(); i++)
-        for(uint32_t c=0;c<0x200;c++)  {
-            state new_state;
-            new_state.tr[c]=states[i].tr[c]+rotate;
-            ret.states.push_back(std::move(new_state));
-        }
-    ret.final_states=final_states+rotate;
-    return ret;
 }
 int main(){
     char* text=NULL;
