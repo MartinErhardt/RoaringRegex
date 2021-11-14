@@ -151,23 +151,30 @@ NFA NFA::build_NFA(const char* p){
             std::cout<<"################################# intermediate NFA: "<<std::endl;
             std::cout<<cur_nfa;
             std::cout<<"op: "<<ops.top()<<std::endl;
-            nfas.pop();
-            if(ops.top()==CONCATENATION)   nfas.top()*=cur_nfa;
-            else if(ops.top()==OR){
-                NFA intermediate(std::move(nfas.top()));
+            if(ops.top()==CONCATENATION){   
                 nfas.pop();
                 ops.pop();
+                nfas.top()*=cur_nfa;
+                cur_nfa=std::move(nfas.top());
+            }
+            else if(ops.top()==OR){
+                NFA intermediate(std::move(cur_nfa));
+                ops.pop();
+                nfas.pop();
                 cur_nfa=std::move(nfas.top());
                 while(nfas.size()>1&&ops.top()==CONCATENATION){
+                    std::cout<<"pop"<<std::endl;
                     nfas.pop();
                     ops.pop();
                     nfas.top()*=cur_nfa;
                     cur_nfa=std::move(nfas.top());
                 }
-                nfas.top()|=intermediate;
+                cur_nfa|=intermediate;
+                //std::cout<<"################################# WTF? "<<std::endl;
+                //std::cout<<cur_nfa;
             }
-            ops.pop();
-            cur_nfa=std::move(nfas.top());
+            //std::cout<<"################################# WTF? "<<std::endl;
+            //std::cout<<cur_nfa;
         }
         std::cout<<"################################# intermediate final NFA: "<<std::endl;
         std::cout<<cur_nfa;
@@ -197,7 +204,6 @@ NFA NFA::build_NFA(const char* p){
                 i++;
                 break;
             case '|':
-                nfas.push(NFA(cur_n++));
                 ops.push(OR);
                 i++;
                 break;
@@ -313,7 +319,7 @@ NFA& NFA::operator*=(NFA& other){
     std::cout<<*this;
     uint32_t next_initial=other.initial_state;
     //std::cout<<"concat1"<<std::endl;
-    states.insert( states.end(), other.states.begin(), other.states.end() );
+    states.insert(states.end(),other.states.begin(),other.states.end());
     //std::cout<<"concat2"<<std::endl;
     for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++)
         skip<false>(*i,next_initial);
@@ -322,10 +328,17 @@ NFA& NFA::operator*=(NFA& other){
     return *this;
 }
 NFA& NFA::operator|=(NFA& other){
-    int next_initial=states.size();
+    std::cout<<"################################# union NFA: "<<std::endl;
+    std::cout<<other;
+    std::cout<<"################################# union into NFA: "<<std::endl;
+    std::cout<<*this;
+    int next_initial=other.initial_state;
     final_states|=other.final_states;
-    states.insert( states.end(), other.states.begin(), other.states.end() );
+    states.insert(states.end(),other.states.begin(),other.states.end());
     skip<true>(initial_state,next_initial);
+    if(other.final_states.contains(next_initial))  final_states.add(initial_state);
+    //std::cout<<"################################# merged to NFA: "<<std::endl;
+    //std::cout<<*this;
     return *this;
 }
 NFA& NFA::operator*(unsigned int n){
