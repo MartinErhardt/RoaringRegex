@@ -2,3 +2,4 @@ fast_regex
 *.o
 CRoaring
 gmon.out
+analysis.txt
