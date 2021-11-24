@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 #include<stdio.h>
-#include <stdbool.h>
-#include <string.h>
-#include "../CRoaring/roaring.hh"
-#include "inc/regex.h"
+#include<stdbool.h>
+#include<string.h>
+#include"../CRoaring/roaring.hh"
+#include"inc/regex.h"
 #include<stack>
-#include <iostream>
+#include<iostream>
+#include<chrono>
 using namespace roaring;
 using namespace Regex;
 #define ALIGN 128
@@ -39,7 +40,7 @@ NFA::NFA(uint32_t cur_n,uint32_t states_n,state*states):PseudoNFA(cur_n,states_n
 }
 NFA::NFA(uint32_t cur_n,char c,uint32_t states_n, state* states):PseudoNFA(cur_n,c,states_n,states), states(states),
                         final_states(Roaring::bitmapOf(1,cur_n+1)){
-    std::cout<<"single character: "<<c<<"\tcur_n: "<<cur_n<<std::endl;
+    //std::cout<<"single character: "<<c<<"\tcur_n: "<<cur_n<<std::endl;
     states[cur_n].tr[(int)c].add(cur_n+1);
     states[cur_n+1].tr[0x100+(int)c].add(cur_n);
 }
@@ -109,18 +110,18 @@ NFA_t Lexer::build_NFA(const char* p){
     int ps=strlen(p);
     auto clear_stack=[&](){
         NFA_t cur_nfa(std::move(nfas.top())); //FIXME not in printable state
-        std::cout<<"clear stack"<< nfas.top()<<std::endl;
+        //std::cout<<"clear stack"<< nfas.top()<<std::endl;
         if(ops.size()){
             ops.pop();
-            std::cout<<"ops top: "<<ops.top()<<"\tnfas size: "<<nfas.size()<<std::endl;
+            //std::cout<<"ops top: "<<ops.top()<<"\tnfas size: "<<nfas.size()<<std::endl;
             while(nfas.size()>1&&ops.top()!=BRACKETS){
-                std::cout<<"################################# intermediate NFA: "<<std::endl;
-                std::cout<<cur_nfa;
-                std::cout<<"op: "<<ops.top()<<std::endl;
+                //std::cout<<"################################# intermediate NFA: "<<std::endl;
+                //std::cout<<cur_nfa;
+                //std::cout<<"op: "<<ops.top()<<std::endl;
                 if(ops.top()==CONCATENATION){   
                     nfas.pop();
                     ops.pop();
-                    std::cout<<"size now: "<<nfas.top().size<<std::endl;
+                    //std::cout<<"size now: "<<nfas.top().size<<std::endl;
                     nfas.top()*=cur_nfa;
                     cur_nfa=std::move(nfas.top());
                 }
@@ -131,7 +132,7 @@ NFA_t Lexer::build_NFA(const char* p){
                     nfas.pop();
                     cur_nfa=std::move(nfas.top());
                     while(nfas.size()>1&&ops.top()==CONCATENATION){
-                        std::cout<<"pop"<<std::endl;
+                        //std::cout<<"pop"<<std::endl;
                         nfas.pop();
                         ops.pop();
                         nfas.top()*=cur_nfa;
@@ -140,8 +141,8 @@ NFA_t Lexer::build_NFA(const char* p){
                     cur_nfa|=intermediate;
                 }
             }
-            std::cout<<"################################# intermediate final NFA: "<<std::endl;
-            std::cout<<cur_nfa;
+            //std::cout<<"################################# intermediate final NFA: "<<std::endl;
+            //std::cout<<cur_nfa;
         }
         ops.push(CONCATENATION);
         nfas.pop();
@@ -283,10 +284,10 @@ void NFA::skip(uint32_t n,uint32_t k){
 NFA& NFA::operator*=(NFA& other){
     this->PseudoNFA::operator*=(other);
     
-    std::cout<<"################################# merge NFA: "<<std::endl;
-    std::cout<<other;
-    std::cout<<"################################# merge into NFA: "<<std::endl;
-    std::cout<<*this;
+    //std::cout<<"################################# merge NFA: "<<std::endl;
+    //std::cout<<other;
+    //std::cout<<"################################# merge into NFA: "<<std::endl;
+    //std::cout<<*this;
     //std::cout<<"concat1"<<std::endl;
     //std::cout<<"concat2"<<std::endl;
     for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++)
@@ -300,10 +301,10 @@ NFA& NFA::operator*=(NFA& other){
 }
 NFA& NFA::operator|=(NFA& other){
     this->PseudoNFA::operator|=(other);
-    std::cout<<"################################# union NFA: "<<std::endl;
-    std::cout<<other;
-    std::cout<<"################################# union into NFA: "<<std::endl;
-    std::cout<<*this;
+    //std::cout<<"################################# union NFA: "<<std::endl;
+    //std::cout<<other;
+    //std::cout<<"################################# union into NFA: "<<std::endl;
+    //std::cout<<*this;
     final_states|=other.final_states;
     skip<true>(initial_state,other.initial_state);
     if(other.final_states.contains(other.initial_state))  final_states.add(initial_state);
@@ -329,9 +330,12 @@ int main(){
             return -1;
     text[strlen(text)-1]='\0';
     pattern[strlen(pattern)-1]='\0';
+    auto start_time = std::chrono::high_resolution_clock::now();
     Lexer l(pattern);
+    auto end_time = std::chrono::high_resolution_clock::now();
     std::cout<<"################################# final NFA: "<<std::endl;
     std::cout<<l.exec.nfa;
+    std::cout<<"time: " <<(end_time - start_time)/std::chrono::milliseconds(1) << "ms\n";
     //std::cout<<"size: "<<sizeof(my_nfa)<<std::endl;
     free(text);
     free(pattern);

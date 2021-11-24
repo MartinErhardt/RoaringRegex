@@ -43,8 +43,7 @@ namespace Regex{
             //std::cout<<"CALL  BASE1"<<std::endl;
             return *this*=other;};    //Concatenation
         PseudoNFA& operator|=(PseudoNFA& other){size+=other.size;return *this;};    //Union
-        PseudoNFA& operator*=(PseudoNFA& other){
-            std::cout<<"CALL  BASE2this size "<<size<<"\tother size: "<<other.size<<std::endl;size+=other.size;return *this;};        //Concatenation
+        PseudoNFA& operator*=(PseudoNFA& other){size+=other.size;return *this;};        //Concatenation
         PseudoNFA& operator* (unsigned int n){return *this;};                     //Kleene operator
     };
     class NFA: public PseudoNFA{
