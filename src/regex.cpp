@@ -13,26 +13,31 @@ using namespace roaring;
 using namespace Regex;
 #define ALIGN 128
 NFA::NFA(NFA&& to_move): PseudoNFA(to_move),states(to_move.states),
-                        current_states(std::move(to_move.current_states)),
-                        final_states(std::move(to_move.final_states)){
+                        current_states(std::move(to_move.current_states)){
+    current_states[0]=std::move(to_move.current_states[0]);
+    current_states[1]=std::move(to_move.current_states[1]);
+    final_states=std::move(to_move.final_states);
 }
-NFA::NFA(const NFA& to_copy):PseudoNFA(to_copy), states(to_copy.states),
-                        current_states(to_copy.current_states),
-                        final_states(to_copy.final_states){
+NFA::NFA(const NFA& to_copy):PseudoNFA(to_copy), states(to_copy.states){
+    current_states[0]=to_copy.current_states[0];
+    current_states[1]=to_copy.current_states[1];
+    final_states=to_copy.final_states;
 }
 NFA& NFA::operator=(NFA&other){
     this->PseudoNFA::operator=(other);
-    states          =other.states;
-    final_states    =other.final_states;
-    current_states  =other.current_states;
+    states           =other.states;
+    final_states     =other.final_states;
+    current_states[0]=other.current_states[0];
+    current_states[1]=other.current_states[1];
     return *this;
 }
 NFA& NFA::operator=(NFA&& other){
     this->PseudoNFA::operator=(other);
     states          =other.states;
     other.states=nullptr;
-    current_states  =std::move(other.current_states);
-    final_states    =std::move(other.final_states);
+    current_states[0]=std::move(other.current_states[0]);
+    current_states[1]=std::move(other.current_states[1]);
+    final_states     =std::move(other.final_states);
     other.final_states=Roaring::bitmapOf(1,other.initial_state);
     return *this;
 }
@@ -50,35 +55,10 @@ NFA_t Lexer::bracket_expression(const char* start, int* i,uint32_t new_initial,i
     while(*i<ps&&!(!(escaped^=(p[*i]=='\\'))&&p[(*i)++]==']'));
     if(*i==ps) throw std::runtime_error("invalid expression!");
     return NFA_t(new_initial,states_n,states);
-}
-std::ostream& operator<<(std::ostream& out, NFA const& nfa){
-    out<<"initial state: "<<nfa.initial_state<<std::endl;
-    out<<"final states: ";
-    nfa.final_states.printf();
-    out<<std::endl;
-    for(uint32_t i=0;i<nfa.size;i++){
-        out<<"state: "<<i+nfa.initial_state<<std::endl;
-        out<<"forward transitions: "<<std::endl;
-        for(unsigned char c=0; c<0xFF;c++){
-            const Roaring& r=nfa.states[i].tr[(int)c];
-            //std::cout<<(int) c<<std::endl;
-            if(!r.cardinality()) continue;
-            out<<c<<": ";
-            r.printf();
-            out<<std::endl;
-        }
-        out<<"backward transitions: "<<std::endl;
-        for(unsigned char c=0; c<0xFF;c++){
-            const Roaring& r=nfa.states[i].tr[0x100+((int)c)];
-            //std::cout<<(int) c<<std::endl;
-            if(!r.cardinality()) continue;
-            out<<c<<": ";
-            r.printf();
-            out<<std::endl;
-        }
-    }
-    return out;
-}
+}//std::ostream& operator<<(std::ostream& out, Executable const& exec){
+//    out<<exec
+//    return out;
+//}
 std::ostream& operator<<(std::ostream& out, PseudoNFA const& pnfa){
     out<<"size: "<<pnfa.size<<std::endl;
     return out;
@@ -247,25 +227,25 @@ NFA_t Lexer::build_NFA(const char* p){
           else return ((size_t)c)+0x100;         \
         }())
 template<bool fwd>
-Executable& Executable::shift(char c){
-    size_t current_states_cardinality=nfa.current_states.cardinality();
-    nfa.current_states.toUint32Array(gather_for_fastunion);
+NFA& NFA::shift(char c){
+    size_t current_states_cardinality=current_states[fwd].cardinality();
+    current_states[fwd].toUint32Array(gather_for_fastunion);
     for(uint32_t i=0;i<current_states_cardinality;i++)
-        select_for_fastunion[i]=&nfa.states[gather_for_fastunion[i]].tr[idx(c,fwd)];
-    nfa.current_states = Roaring::fastunion(current_states_cardinality,
+        select_for_fastunion[i]=&states[gather_for_fastunion[i]].tr[idx(c,fwd)];
+    current_states[fwd] = Roaring::fastunion(current_states_cardinality,
                                         const_cast<const Roaring**>(select_for_fastunion));
     return *this;
 }
-Executable& Executable::operator<<(char c)
+NFA& NFA::operator<<(char c)
 {
     return shift<true>(c);
 }
-Executable& Executable::operator>>(char c)
+NFA& NFA::operator>>(char c)
 {
     return shift<false>(c);
 }
-uint8_t Executable::operator*(){
-    return (nfa.current_states.contains(nfa.initial_state)<<1)|(nfa.current_states.and_cardinality(nfa.final_states)>0);
+uint8_t NFA::operator*(){
+    return (current_states[0].contains(initial_state)<<1)|(current_states[1].and_cardinality(final_states)>0);
 };
 template<bool fwd>
 void NFA::skip(uint32_t n,uint32_t k){
@@ -334,10 +314,11 @@ int main(){
     Lexer l(pattern);
     auto end_time = std::chrono::high_resolution_clock::now();
     std::cout<<"################################# final NFA: "<<std::endl;
-    std::cout<<l.exec.nfa;
+    l.exec->print();
     std::cout<<"time: " <<(end_time - start_time)/std::chrono::milliseconds(1) << "ms\n";
     //std::cout<<"size: "<<sizeof(my_nfa)<<std::endl;
     free(text);
     free(pattern);
+    //l.~Lexer();
     return 0;
 }
