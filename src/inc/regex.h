@@ -22,9 +22,7 @@ namespace Regex{
         PseudoNFA& operator=(PseudoNFA& other){size=other.size;initial_state=other.initial_state; return *this;}
         PseudoNFA& operator=(PseudoNFA&& other){size=other.size;other.size=0; initial_state=other.initial_state; return *this;}
         PseudoNFA& operator|=(PseudoNFA&& other){return *this|=other;};     //Union
-        PseudoNFA& operator*=(PseudoNFA&& other){
-            //std::cout<<"CALL  BASE1"<<std::endl;
-            return *this*=other;};    //Concatenation
+        PseudoNFA& operator*=(PseudoNFA&& other){return *this*=other;};    //Concatenation
         PseudoNFA& operator|=(PseudoNFA& other){size+=other.size;return *this;};    //Union
         PseudoNFA& operator*=(PseudoNFA& other){size+=other.size;return *this;};        //Concatenation
         PseudoNFA& operator* (unsigned int n){return *this;};                     //Kleene operator
@@ -32,32 +30,32 @@ namespace Regex{
     class Executable{
         void* memory_pool=nullptr;
         size_t memory_pool_size=0;
-        bool moved_from=false;
-        char* cur_s_fwd=nullptr;
-        char* cur_s_bwd=nullptr;
-        char* begin_s=nullptr;
+        bool moved_from = false;
+        char* cur_s_fwd = nullptr;
+        char* cur_s_bwd = nullptr;
+        char* begin_s   = nullptr;
         #define FLAG_ACCEPTING   (1<<1)
         #define FLAG_INITIAL     (1<<2)
         virtual uint8_t operator*()            = 0;
         virtual Executable& operator<<(char c) = 0;            //process forward
         virtual Executable& operator>>(char c) = 0;            //process in reverse order
         virtual void reset()                   = 0;
-    public: //only for debug purposes
+    public: 
         size_t states_n=0;
     protected:
         uint32_t*  gather_for_fastunion=nullptr;                // owned by memory_pool
         Roaring**   select_for_fastunion=nullptr;                // owned by memory_pool
     public: //TODO make private
-            Executable(){};
+            Executable(size_t states_n_arg){states_n=states_n_arg;};
             virtual void print() = 0;
             void init(void* memory_pool_arg, size_t memory_pool_size_arg, size_t states_n_arg){
+                states_n=states_n_arg;
                 if(states_n>256){
                     gather_for_fastunion=reinterpret_cast<uint32_t*>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n);
                     select_for_fastunion=reinterpret_cast<Roaring**>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n+sizeof(Roaring*)*states_n);
                 }
                 memory_pool=memory_pool_arg;
                 memory_pool_size=memory_pool_size_arg;
-                states_n=states_n_arg;
             };
             Executable& operator=(Executable& other)
             /*{
@@ -147,7 +145,7 @@ namespace Regex{
         template<bool fwd> void skip(uint32_t n,uint32_t k);
         template<bool fwd> NFA& shift(char c);
     public:
-        StateSet* states;                                 //owned first by Parser then Executable
+        StateSet*  states;                                 //owned first by Parser then Executable
         Roaring    current_states[2];
         Roaring    final_states;
         NFA(){};
@@ -177,7 +175,7 @@ namespace Regex{
             out<<"state: "<<i+nfa.initial_state<<std::endl;
             out<<"forward transitions: "<<std::endl;
             for(unsigned char c=0; c<0x80;c++){
-                const Roaring& r=nfa.states[0x100*i+(int)c];
+                const Roaring& r=nfa.states[i+2*nfa.size*((int)c)];
                 //std::cout<<(int) c<<std::endl;
                 if(!r.cardinality()) continue;
                 out<<c<<": ";
@@ -186,7 +184,7 @@ namespace Regex{
             }
             out<<"backward transitions: "<<std::endl;
             for(unsigned char c=0; c<0x80;c++){
-                const Roaring& r=nfa.states[0x100*i+0x80+((int)c)];
+                const Roaring& r=nfa.states[i+nfa.size*(1+2*((int)c))];
                 //std::cout<<(int) c<<std::endl;
                 if(!r.cardinality()) continue;
                 out<<c<<": ";

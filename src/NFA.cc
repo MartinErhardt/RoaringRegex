@@ -5,8 +5,8 @@ using namespace roaring;
 using namespace Regex;
 
 #define idx(state, c, fwd) ([&]{                                   \
-          if constexpr (fwd) return ((state)<<8)|((size_t)c);       \
-          else return               ((state)<<8)|(1<<7)|((size_t)c);\
+          if constexpr (fwd) return state+2*states_n*((size_t)c);       \
+          else return               state+states_n*(1+2*((size_t)c));\
         }())
 Roaring operator+(Roaring& set,int32_t rotate){
     Roaring ret;
@@ -15,14 +15,14 @@ Roaring operator+(Roaring& set,int32_t rotate){
     return ret;
 }
 template<class StateSet>
-NFA<StateSet>::NFA(NFA<StateSet>&& to_move): PseudoNFA(to_move),states(to_move.states),
+NFA<StateSet>::NFA(NFA<StateSet>&& to_move): PseudoNFA(to_move),Executable(to_move.states_n),states(to_move.states),
                         current_states(std::move(to_move.current_states)){
     current_states[0]=std::move(to_move.current_states[0]);
     current_states[1]=std::move(to_move.current_states[1]);
     final_states=std::move(to_move.final_states);
 }
 template<class StateSet>
-NFA<StateSet>::NFA(const NFA<StateSet>& to_copy):PseudoNFA(to_copy), states(to_copy.states){
+NFA<StateSet>::NFA(const NFA<StateSet>& to_copy):PseudoNFA(to_copy),Executable(to_copy.states_n), states(to_copy.states){
     current_states[0]=to_copy.current_states[0];
     current_states[1]=to_copy.current_states[1];
     final_states=to_copy.final_states;
@@ -32,6 +32,7 @@ NFA<StateSet>& NFA<StateSet>::operator=(NFA<StateSet>&other){
     this->PseudoNFA::operator=(other);
     states           =other.states;
     final_states     =other.final_states;
+    states_n            =other.states_n;
     current_states[0]=other.current_states[0];
     current_states[1]=other.current_states[1];
     return *this;
@@ -41,6 +42,7 @@ NFA<StateSet>& NFA<StateSet>::operator=(NFA<StateSet>&& other){
     this->PseudoNFA::operator=(other);
     states           =other.states;
     other.states     =nullptr;
+    states_n            =other.states_n;
     current_states[0]=std::move(other.current_states[0]);
     current_states[1]=std::move(other.current_states[1]);
     final_states     =std::move(other.final_states);
@@ -48,10 +50,10 @@ NFA<StateSet>& NFA<StateSet>::operator=(NFA<StateSet>&& other){
     return *this;
 }
 template<class StateSet>
-NFA<StateSet>::NFA(uint32_t cur_n,uint32_t states_n,StateSet*states):PseudoNFA(cur_n,states_n,states),states(states),final_states(std::move(Roaring::bitmapOf(1,cur_n))){
+NFA<StateSet>::NFA(uint32_t cur_n,uint32_t states_n_arg,StateSet*states):PseudoNFA(cur_n,states_n_arg,states),Executable(states_n_arg),states(states),final_states(std::move(Roaring::bitmapOf(1,cur_n))){
 }
 template<class StateSet>
-NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n, StateSet* states):PseudoNFA(cur_n,c,states_n,states), states(states),
+NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, StateSet* states):PseudoNFA(cur_n,c,states_n_arg,states),Executable(states_n_arg), states(states),
                         final_states(Roaring::bitmapOf(1,cur_n+1)){
     //std::cout<<"single character: "<<c<<"\tcur_n: "<<cur_n<<std::endl;
     states[idx(cur_n,(int)c,true)].add(cur_n+1);
@@ -61,7 +63,8 @@ template<class StateSet>
 NFA<StateSet> operator+(NFA<StateSet>& input,int rotate){
     NFA ret(input.initial_state+rotate,input.size,input.states);
     for (uint32_t i=input.initial_state;i<input.initial_state+input.size; i++){
-        for(uint32_t c=0;c<0x100;c++) ret.states[i*0x100+c]=std::move(input.states[i*0x100+c]+rotate);
+        for(uint32_t c=0;c<0x80;c++) ret.states[i+input.states_n*(2*c)]=std::move(input.states[i+input.states_n*(2*c)]+rotate);
+        for(uint32_t c=0;c<0x80;c++) ret.states[i+input.states_n*(1+2*c)]=std::move(input.states[i+input.states_n*(1+2*c)]+rotate);
     }
     ret.final_states=std::move(input.final_states+rotate);
     return ret;
