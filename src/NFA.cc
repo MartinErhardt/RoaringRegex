@@ -5,8 +5,8 @@ using namespace roaring;
 using namespace Regex;
 
 #define idx(state, c, fwd) ([&]{                                   \
-          if constexpr (fwd) return ((state)<<9)|((size_t)c);       \
-          else return               ((state)<<9)|(1<<8)|((size_t)c);\
+          if constexpr (fwd) return ((state)<<8)|((size_t)c);       \
+          else return               ((state)<<8)|(1<<7)|((size_t)c);\
         }())
 Roaring operator+(Roaring& set,int32_t rotate){
     Roaring ret;
@@ -61,7 +61,7 @@ template<class StateSet>
 NFA<StateSet> operator+(NFA<StateSet>& input,int rotate){
     NFA ret(input.initial_state+rotate,input.size,input.states);
     for (uint32_t i=input.initial_state;i<input.initial_state+input.size; i++){
-        for(uint32_t c=0;c<0x200;c++) ret.states[i*0x200+c]=std::move(input.states[i*0x200+c]+rotate);
+        for(uint32_t c=0;c<0x100;c++) ret.states[i*0x100+c]=std::move(input.states[i*0x100+c]+rotate);
     }
     ret.final_states=std::move(input.final_states+rotate);
     return ret;
@@ -97,7 +97,7 @@ void NFA<StateSet>::skip(uint32_t n,uint32_t k){
     uint32_t to_skip=fwd?k:n;
     uint32_t fixed=fwd?n:k;
     //std::cout<<"to_skip: "<<to_skip<<"\tfixed: "<<fixed<<std::endl;
-    for(unsigned char c=0;c<0xFF;c++){
+    for(unsigned char c=0;c<0x80;c++){
         states[idx(fixed,c,fwd)] |=states[idx(to_skip,c,fwd)];
         for(Roaring::const_iterator j =states[idx(to_skip,c,fwd)].begin();
                                     j!=states[idx(to_skip,c,fwd)].end();j++){

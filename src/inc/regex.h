@@ -38,11 +38,10 @@ namespace Regex{
         char* begin_s=nullptr;
         #define FLAG_ACCEPTING   (1<<1)
         #define FLAG_INITIAL     (1<<2)
-        virtual uint8_t operator*() = 0;
+        virtual uint8_t operator*()            = 0;
         virtual Executable& operator<<(char c) = 0;            //process forward
         virtual Executable& operator>>(char c) = 0;            //process in reverse order
-        virtual void reset() = 0;
-        
+        virtual void reset()                   = 0;
     public: //only for debug purposes
         size_t states_n=0;
     protected:
@@ -131,7 +130,7 @@ namespace Regex{
                     //if(states_n>256){
                         Roaring* states=(Roaring*)memory_pool;
                         Roaring* cur_state=states;
-                        for(;cur_state<states+states_n*0x200;cur_state++){
+                        for(;cur_state<states+states_n*0x100;cur_state++){
                         //    std::cout<<"state: "<<cur_state<<"sates+states_n"<<states+states_n<<std::endl;
                             cur_state->~Roaring();
                         }
@@ -177,8 +176,8 @@ namespace Regex{
         for(uint32_t i=0;i<nfa.size;i++){
             out<<"state: "<<i+nfa.initial_state<<std::endl;
             out<<"forward transitions: "<<std::endl;
-            for(unsigned char c=0; c<0xFF;c++){
-                const Roaring& r=nfa.states[0x200*i+(int)c];
+            for(unsigned char c=0; c<0x80;c++){
+                const Roaring& r=nfa.states[0x100*i+(int)c];
                 //std::cout<<(int) c<<std::endl;
                 if(!r.cardinality()) continue;
                 out<<c<<": ";
@@ -186,8 +185,8 @@ namespace Regex{
                 out<<std::endl;
             }
             out<<"backward transitions: "<<std::endl;
-            for(unsigned char c=0; c<0xFF;c++){
-                const Roaring& r=nfa.states[0x200*i+0x100+((int)c)];
+            for(unsigned char c=0; c<0x80;c++){
+                const Roaring& r=nfa.states[0x100*i+0x80+((int)c)];
                 //std::cout<<(int) c<<std::endl;
                 if(!r.cardinality()) continue;
                 out<<c<<": ";
@@ -217,7 +216,7 @@ namespace Regex{
         std::unique_ptr<Executable> exec;
         Lexer(const char* p){
             states_n=build_NFA<PseudoNFA,void>(p,nullptr).size;
-            size_t memory_pool_size=sizeof(Roaring)*0x200*states_n+sizeof(Roaring*)*states_n+sizeof(uint32_t*)*states_n;
+            size_t memory_pool_size=sizeof(Roaring)*0x100*states_n+sizeof(Roaring*)*states_n+sizeof(uint32_t*)*states_n;
             //std::cout<<"size of automaton: "<<states_n<<std::endl;
             //std::shared_ptr<void> memory_pool=std::shared_ptr<void>(malloc(memory_pool_size),free);
             void* memory_pool=malloc(memory_pool_size);
