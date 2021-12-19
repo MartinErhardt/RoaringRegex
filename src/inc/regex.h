@@ -245,4 +245,5 @@ namespace Regex{
         using reference         = (char*)&;  // or also value_type&
     };*/
 }
+#include"../BitSet.cc"
 #include"../NFA.cc"

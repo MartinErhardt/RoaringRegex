@@ -15,10 +15,7 @@ NFA_t Lexer::bracket_expression(const char* start, int* i,uint32_t new_initial,i
     while(*i<ps&&!(!(escaped^=(p[*i]=='\\'))&&p[(*i)++]==']'));
     if(*i==ps) throw std::runtime_error("invalid expression!");
     return NFA_t(new_initial,states_n,states);
-}//std::ostream& operator<<(std::ostream& out, Executable const& exec){
-//    out<<exec
-//    return out;
-//}
+}
 std::ostream& operator<<(std::ostream& out, PseudoNFA const& pnfa){
     out<<"size: "<<pnfa.size<<std::endl;
     return out;
@@ -102,9 +99,7 @@ NFA_t Lexer::build_NFA(const char* p, StateSet* states){
                 i++;
                 break;
             case '*':
-                std::cout<<nfas.size()<<std::endl;
                 nfas.top()*1;
-                std::cout<<nfas.size()<<std::endl;
                 i++;
                 break;
             case '+':
