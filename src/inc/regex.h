@@ -94,8 +94,8 @@ namespace Regex{
                     cur_s_fwd=begin_s;
                     *this<<'\0';
                 }
-                while(!(*(*this<<*(cur_s_fwd++))&FLAG_ACCEPTING)&&*cur_s_fwd);
-                if(!(*cur_s_fwd)&&**this&FLAG_ACCEPTING){
+                while(!(*(*this<<*(cur_s_fwd++))&FLAG_ACCEPTING)&&*(cur_s_fwd-1));
+                if(!(*(--cur_s_fwd))&&**this&FLAG_ACCEPTING){
                     char* intermediate=cur_s_fwd;
                     cur_s_fwd=cur_s_bwd=nullptr;
                     return intermediate-1; //minus null character
@@ -110,8 +110,8 @@ namespace Regex{
             };
             char* operator>>(char* s){
                 if(cur_s_bwd==cur_s_fwd) reset();
-                while(!(*(*this>>*(cur_s_bwd--))&FLAG_INITIAL)&&cur_s_bwd>begin_s);
-                if(begin_s==cur_s_bwd&&**this&FLAG_INITIAL){
+                while(!(*(*this>>*(cur_s_bwd--))&FLAG_INITIAL)&&cur_s_bwd+1>begin_s);
+                if(begin_s==++cur_s_bwd&&**this&FLAG_INITIAL){
                     cur_s_bwd=cur_s_fwd;
                     return begin_s;
                 }
@@ -166,16 +166,20 @@ namespace Regex{
         NFA& operator<<(char c);
         void print(){std::cout<<*this;}
     };
+    std::ostream& operator<<(std::ostream& out, PseudoNFA const& nfa){out<<"PseudoNFA size: "<<nfa.size<<std::endl;return out;}
     std::ostream& operator<<(std::ostream& out, NFA<Roaring> const& nfa){
         out<<"initial state: "<<nfa.initial_state<<std::endl;
+        out<<"buffer_size: "<<nfa.states_n<<std::endl;
+        out<<"size: "<<nfa.size<<std::endl;
         out<<"final states: ";
         nfa.final_states.printf();
         out<<std::endl;
-        for(uint32_t i=0;i<nfa.size;i++){
-            out<<"state: "<<i+nfa.initial_state<<std::endl;
+        for(uint32_t i=nfa.initial_state;i<nfa.initial_state+nfa.size;i++){
+            out<<"state: "<<i<<std::endl;
             out<<"forward transitions: "<<std::endl;
             for(unsigned char c=0; c<0x80;c++){
-                const Roaring& r=nfa.states[i+2*nfa.size*((int)c)];
+                //std::cout<<"f"<<(char)c<<"\ti: "<<i+2*nfa.states_n*((int)c)<<std::endl;
+                const Roaring& r=nfa.states[i+2*nfa.states_n*((int)c)];
                 //std::cout<<(int) c<<std::endl;
                 if(!r.cardinality()) continue;
                 out<<c<<": ";
@@ -184,7 +188,7 @@ namespace Regex{
             }
             out<<"backward transitions: "<<std::endl;
             for(unsigned char c=0; c<0x80;c++){
-                const Roaring& r=nfa.states[i+nfa.size*(1+2*((int)c))];
+                const Roaring& r=nfa.states[i+nfa.states_n*(1+2*((int)c))];
                 //std::cout<<(int) c<<std::endl;
                 if(!r.cardinality()) continue;
                 out<<c<<": ";

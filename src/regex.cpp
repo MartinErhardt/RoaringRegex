@@ -75,7 +75,7 @@ NFA_t Lexer::build_NFA(const char* p, StateSet* states){
         nfas.push(std::move(cur_nfa));
     };
     auto repeat=[&](){
-        nfas.push(nfas.top()+(int32_t)nfas.top().size);
+        nfas.push(std::move(nfas.top()+(((int32_t)nfas.top().size))));
         ops.push(CONCATENATION);
     };
     for(int i=0;i<ps;){
@@ -109,9 +109,11 @@ NFA_t Lexer::build_NFA(const char* p, StateSet* states){
                 break;
             case '+':
                 repeat();
-                //std::cout<<"Top"<<std::endl;
                 //std::cout<<nfas.top();
+                //std::cout<<"Top"<<std::endl;
+                //
                 nfas.top()*1;
+                //std::cout<<nfas.top();
                 i++;
                 break;
             case '?':
