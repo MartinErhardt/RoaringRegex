@@ -151,10 +151,10 @@ void NFA<StateSet>::skip(uint32_t n,uint32_t k){
 }
 template<class StateSet>
 NFA<StateSet>& NFA<StateSet>::operator*=(NFA& other){
-    std::cout<<"################################# merge NFA: "<<std::endl;
-    std::cout<<other;
-    std::cout<<"################################# merge into NFA: "<<std::endl;
-    std::cout<<*this;
+    //std::cout<<"################################# merge NFA: "<<std::endl;
+    //std::cout<<other;
+    //std::cout<<"################################# merge into NFA: "<<std::endl;
+    //std::cout<<*this;
     this->PseudoNFA::operator*=(other);
     if constexpr(std::is_same<StateSet, Roaring>::value){
         for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++) skip<false>(*i,other.initial_state);

@@ -102,8 +102,7 @@ namespace Regex{
                 } else if(!*cur_s_fwd){
                     cur_s_fwd=cur_s_bwd=nullptr;
                     return nullptr;
-                }
-                else{
+                }else{
                     cur_s_bwd=cur_s_fwd;
                     return cur_s_fwd;
                 }

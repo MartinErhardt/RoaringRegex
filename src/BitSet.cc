@@ -42,8 +42,8 @@ public:
         return *this;
     }*/
     uint32_t cardinality() const{
-        uint32_t ret_val=0;
-        for(size_t i=0;i<words_n;i++) ret_val+=__builtin_popcount(words[i]);
+        uint64_t ret_val=0;
+        for(size_t i=0;i<words_n;i++) ret_val+=_popcnt64(words[i]);
         return ret_val;
     }
     class iterator{
@@ -76,8 +76,10 @@ public:
         }
     };
     void add(uint32_t t){
+        uint64_t t64=(uint64_t) t;
         int w_n=t>>6;
-        words[w_n]|=(1<<(t&0x3f));
+        words[w_n]|=(1ULL<<(t64&0x3fULL));
+        //std::cout<<"w_n: "<<w_n<<"\tt:"<<t<<"\t(t&0x3f): "<<(t64&0x3fllu)<<"\t new: "<<(1ULL<<(t64&0x3fULL))<<"\t w[w_n]: "<<words[w_n]<<std::endl;
     }
     size_t and_cardinality(BitSet<words_n> new_s){
         BitSet<words_n> plus_s(new_s);
@@ -85,8 +87,9 @@ public:
         return plus_s.cardinality();
     }
     bool contains(uint32_t t){
+        uint64_t t64=(uint64_t) t;
         int w_n=t>>6;
-        return (words[w_n]&(1<<(t&0x3f)))>>(t&0x3f);
+        return (words[w_n]&(1ULL<<(t64&0x3f)))>>(t64&0x3f);
     }
     BitSet<words_n>::iterator begin(){
         return BitSet<words_n>::iterator(words);
