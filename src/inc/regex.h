@@ -124,15 +124,16 @@ namespace Regex{
             };
             virtual ~Executable(){
                 //std::cout<<"moved_from: "<<moved_from<<"states_n: "<<states_n<<std::endl;
+                
                 if(!moved_from&&memory_pool){
-                    //if(states_n>256){
+                    if(states_n>256){
                         Roaring* states=(Roaring*)memory_pool;
                         Roaring* cur_state=states;
                         for(;cur_state<states+states_n*0x100;cur_state++){
                         //    std::cout<<"state: "<<cur_state<<"sates+states_n"<<states+states_n<<std::endl;
                             cur_state->~Roaring();
                         }
-                    //}
+                    }
                     free(memory_pool);
                 }
             }
@@ -146,8 +147,8 @@ namespace Regex{
         template<bool fwd> NFA& shift(char c);
     public:
         StateSet*  states;                                 //owned first by Parser then Executable
-        Roaring    current_states[2];
-        Roaring    final_states;
+        StateSet    current_states[2];
+        StateSet    final_states;
         NFA(){};
         NFA(const NFA& to_copy);
         NFA(NFA&& to_move);
@@ -164,40 +165,41 @@ namespace Regex{
         uint8_t operator*();
         NFA& operator>>(char c);
         NFA& operator<<(char c);
-        void print(){std::cout<<*this;}
+        void print(){
+            std::cout<<"initial state: "<<initial_state<<std::endl;
+            std::cout<<"buffer_size: "<<states_n<<std::endl;
+            std::cout<<"size: "<<size<<std::endl;
+            std::cout<<"final states: ";
+            final_states.printf();
+            std::cout<<std::endl;
+            for(uint32_t i=initial_state;i<initial_state+size;i++){
+                std::cout<<"state: "<<i<<std::endl;
+                std::cout<<"forward transitions: "<<std::endl;
+                for(unsigned char c=0; c<0x80;c++){
+                    //std::cout<<"f"<<(char)c<<"\ti: "<<i+2*nfa.states_n*((int)c)<<std::endl;
+                    const StateSet& r=states[i+2*states_n*((int)c)];
+                    //std::cout<<(int) c<<std::endl;
+                    if(!r.cardinality()) continue;
+                    std::cout<<c<<": ";
+                    r.printf();
+                    std::cout<<std::endl;
+                }
+                std::cout<<"backward transitions: "<<std::endl;
+                for(unsigned char c=0; c<0x80;c++){
+                    const StateSet& r=states[i+states_n*(1+2*((int)c))];
+                    //std::cout<<(int) c<<std::endl;
+                    if(!r.cardinality()) continue;
+                    std::cout<<c<<": ";
+                    r.printf();
+                    std::cout<<std::endl;
+                }
+            }
+                
+        }
     };
     std::ostream& operator<<(std::ostream& out, PseudoNFA const& nfa){out<<"PseudoNFA size: "<<nfa.size<<std::endl;return out;}
-    std::ostream& operator<<(std::ostream& out, NFA<Roaring> const& nfa){
-        out<<"initial state: "<<nfa.initial_state<<std::endl;
-        out<<"buffer_size: "<<nfa.states_n<<std::endl;
-        out<<"size: "<<nfa.size<<std::endl;
-        out<<"final states: ";
-        nfa.final_states.printf();
-        out<<std::endl;
-        for(uint32_t i=nfa.initial_state;i<nfa.initial_state+nfa.size;i++){
-            out<<"state: "<<i<<std::endl;
-            out<<"forward transitions: "<<std::endl;
-            for(unsigned char c=0; c<0x80;c++){
-                //std::cout<<"f"<<(char)c<<"\ti: "<<i+2*nfa.states_n*((int)c)<<std::endl;
-                const Roaring& r=nfa.states[i+2*nfa.states_n*((int)c)];
-                //std::cout<<(int) c<<std::endl;
-                if(!r.cardinality()) continue;
-                out<<c<<": ";
-                r.printf();
-                out<<std::endl;
-            }
-            out<<"backward transitions: "<<std::endl;
-            for(unsigned char c=0; c<0x80;c++){
-                const Roaring& r=nfa.states[i+nfa.states_n*(1+2*((int)c))];
-                //std::cout<<(int) c<<std::endl;
-                if(!r.cardinality()) continue;
-                out<<c<<": ";
-                r.printf();
-                out<<std::endl;
-            }
-        }
-        return out;
-    }
+    template<class StateSet>
+    std::ostream& operator<<(std::ostream& out, NFA<StateSet>& nfa){nfa.print();return std::cout;}
     /*
     template<int states_n>
     class mempool_ptr:public std::shared_ptr<void>{
@@ -208,6 +210,7 @@ namespace Regex{
             this->~std::shared_ptr<void>();
         }
     }*/
+#include"../BitSet.cc"
     class Lexer{
         uint32_t states_n=0;
         template<class NFA_t, class StateSet>
@@ -218,15 +221,28 @@ namespace Regex{
         std::unique_ptr<Executable> exec;
         Lexer(const char* p){
             states_n=build_NFA<PseudoNFA,void>(p,nullptr).size;
-            size_t memory_pool_size=sizeof(Roaring)*0x100*states_n+sizeof(Roaring*)*states_n+sizeof(uint32_t*)*states_n;
-            //std::cout<<"size of automaton: "<<states_n<<std::endl;
-            //std::shared_ptr<void> memory_pool=std::shared_ptr<void>(malloc(memory_pool_size),free);
-            void* memory_pool=malloc(memory_pool_size);
-            memset(static_cast<char*>(memory_pool),0,memory_pool_size); // conforms to strict-aliasing; initializes all Roaring bitmaps
-            
-            //std::cout<<"memory pool: "<<memory_pool<<"\tsize"<<memory_pool_size<<std::endl;
-            Roaring* states=reinterpret_cast<Roaring*>(memory_pool);
-            exec=std::make_unique<NFA<Roaring>>(build_NFA<NFA<Roaring>,Roaring>(p,states));
+            void* memory_pool;
+            size_t memory_pool_size;
+            if(states_n>256){
+                memory_pool_size=sizeof(Roaring)*0x100*states_n+sizeof(Roaring*)*states_n+sizeof(uint32_t*)*states_n;
+                //std::cout<<"size of automaton: "<<states_n<<std::endl;
+                //std::shared_ptr<void> memory_pool=std::shared_ptr<void>(malloc(memory_pool_size),free);
+                memory_pool=malloc(memory_pool_size);
+                memset(static_cast<char*>(memory_pool),0,memory_pool_size); // conforms to strict-aliasing; initializes all Roaring bitmaps
+                
+                //std::cout<<"memory pool: "<<memory_pool<<"\tsize"<<memory_pool_size<<std::endl;
+                Roaring* states=reinterpret_cast<Roaring*>(memory_pool);
+                exec=std::make_unique<NFA<Roaring>>(build_NFA<NFA<Roaring>,Roaring>(p,states));
+            }
+#define alloc(k){                                                                                       \
+                memory_pool_size=sizeof(BitSet<k>)*0x100*states_n;                                      \
+                memory_pool=malloc(memory_pool_size);                                                   \
+                memset(static_cast<char*>(memory_pool),0,memory_pool_size);                             \
+                BitSet<k>* states=reinterpret_cast<BitSet<k>*>(memory_pool);                            \
+                exec=std::make_unique<NFA<BitSet<k>>>(build_NFA<NFA<BitSet<k>>,BitSet<k>>(p,states));}
+            else if(states_n>128) alloc(4)
+            else if(states_n>64)  alloc(2)
+            else alloc(1)
             exec->init(memory_pool, memory_pool_size, states_n);
         }
         //~Lexer(){
@@ -245,5 +261,4 @@ namespace Regex{
         using reference         = (char*)&;  // or also value_type&
     };*/
 }
-#include"../BitSet.cc"
 #include"../NFA.cc"

@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+#include"BitSet.cc"
 using namespace roaring;
 using namespace Regex;
 
@@ -17,6 +18,7 @@ Roaring operator+(Roaring& set,int32_t rotate){
     //ret.printf();
     return ret;
 }
+//NFA intances are lightweight objects now => TODO remove move semantics
 template<class StateSet>
 NFA<StateSet>::NFA(NFA<StateSet>&& to_move): PseudoNFA(to_move),Executable(to_move.states_n),states(to_move.states),
                         current_states(std::move(to_move.current_states)){
@@ -49,18 +51,34 @@ NFA<StateSet>& NFA<StateSet>::operator=(NFA<StateSet>&& other){
     current_states[0]=std::move(other.current_states[0]);
     current_states[1]=std::move(other.current_states[1]);
     final_states     =std::move(other.final_states);
-    other.final_states=Roaring::bitmapOf(1,other.initial_state);
+    if constexpr(std::is_same<StateSet, Roaring>::value){
+        other.final_states=std::move(Roaring::bitmapOf(1,other.initial_state));
+    }else{
+        StateSet s;
+        s.add(other.initial_state);
+        other.final_states=s;
+    }
     return *this;
 }
 template<class StateSet>
-NFA<StateSet>::NFA(uint32_t cur_n,uint32_t states_n_arg,StateSet*states):PseudoNFA(cur_n,1,states),Executable(states_n_arg),states(states),final_states(std::move(Roaring::bitmapOf(1,cur_n))){
+NFA<StateSet>::NFA(uint32_t cur_n,uint32_t states_n_arg,StateSet*states):PseudoNFA(cur_n,1,states),Executable(states_n_arg),states(states){
+    if constexpr(std::is_same<StateSet, Roaring>::value) final_states=std::move(Roaring::bitmapOf(1,cur_n));
+    else{
+        final_states=StateSet();
+        final_states.add(cur_n);
+    }
 }
 template<class StateSet>
-NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, StateSet* states):PseudoNFA(cur_n,c,2,states),Executable(states_n_arg), states(states),
-                        final_states(Roaring::bitmapOf(1,cur_n+1)){
+NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, StateSet* states):PseudoNFA(cur_n,c,2,states),Executable(states_n_arg), states(states){
     //std::cout<<"single character: "<<c<<"\tcur_n: "<<cur_n<<std::endl;
     states[idx(cur_n,(int)c,true)].add(cur_n+1);
     states[idx(cur_n+1,(int)c,false)].add(cur_n);
+    if constexpr(std::is_same<StateSet, Roaring>::value) final_states=std::move(Roaring::bitmapOf(1,cur_n+1));
+    else{
+        final_states=StateSet();
+        final_states.add(cur_n+1);
+        //final_states.printf();
+    }
 }
 template<class StateSet>
 NFA<StateSet> operator+(NFA<StateSet>& input,int rotate){
@@ -84,12 +102,17 @@ NFA<StateSet> operator+(NFA<StateSet>& input,int rotate){
 template<class StateSet>
 template<bool fwd>
 NFA<StateSet>& NFA<StateSet>::shift(char c){
-    size_t current_states_cardinality=current_states[fwd].cardinality();
-    current_states[fwd].toUint32Array(gather_for_fastunion);
-    for(uint32_t i=0;i<current_states_cardinality;i++)
-        select_for_fastunion[i]=&states[idx(gather_for_fastunion[i],c,fwd)];
-    current_states[fwd] = Roaring::fastunion(current_states_cardinality,
-                                        const_cast<const Roaring**>(select_for_fastunion));
+    if constexpr(std::is_same<StateSet, Roaring>::value){
+        size_t current_states_cardinality=current_states[fwd].cardinality();
+        current_states[fwd].toUint32Array(gather_for_fastunion);
+        for(uint32_t i=0;i<current_states_cardinality;i++)
+            select_for_fastunion[i]=&states[idx(gather_for_fastunion[i],c,fwd)];
+        current_states[fwd] = Roaring::fastunion(current_states_cardinality,
+                                            const_cast<const Roaring**>(select_for_fastunion));
+    }else{
+        typename StateSet::iterator i(current_states[fwd]);
+        while(++i>=0) current_states[fwd]|=states[idx(*i,c,fwd)];
+    }
     return *this;
 }
 template<class StateSet>
@@ -114,22 +137,31 @@ void NFA<StateSet>::skip(uint32_t n,uint32_t k){
     //std::cout<<"to_skip: "<<to_skip<<"\tfixed: "<<fixed<<std::endl;
     for(unsigned char c=0;c<0x80;c++){
         states[idx(fixed,c,fwd)] |=states[idx(to_skip,c,fwd)];
-        for(Roaring::const_iterator j =states[idx(to_skip,c,fwd)].begin();
-                                    j!=states[idx(to_skip,c,fwd)].end();j++){
-            //std::cout<<"inbound: "<<*j;
-            states[idx(*j,c,!fwd)].add(fixed);
+        if constexpr(std::is_same<StateSet, Roaring>::value){
+            for(Roaring::const_iterator j =states[idx(to_skip,c,fwd)].begin();
+                                        j!=states[idx(to_skip,c,fwd)].end();j++){
+                //std::cout<<"inbound: "<<*j;
+                states[idx(*j,c,!fwd)].add(fixed);
+            }
+        }else{
+            typename StateSet::iterator i(states[idx(to_skip,c,fwd)]);
+            while(++i>=0) states[idx(*i,c,!fwd)].add(fixed);
         }
     }
 }
 template<class StateSet>
 NFA<StateSet>& NFA<StateSet>::operator*=(NFA& other){
-    //std::cout<<"################################# merge NFA: "<<std::endl;
-    //std::cout<<other;
-    //std::cout<<"################################# merge into NFA: "<<std::endl;
-    //std::cout<<*this;
+    std::cout<<"################################# merge NFA: "<<std::endl;
+    std::cout<<other;
+    std::cout<<"################################# merge into NFA: "<<std::endl;
+    std::cout<<*this;
     this->PseudoNFA::operator*=(other);
-    for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++)
-        skip<false>(*i,other.initial_state);
+    if constexpr(std::is_same<StateSet, Roaring>::value){
+        for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++) skip<false>(*i,other.initial_state);
+    } else{
+        typename StateSet::iterator i(final_states);
+        while(++i>=0) skip<false>(*i,other.initial_state);
+    }
     if(final_states.contains(initial_state)) skip<true>(initial_state,other.initial_state);
     if(final_states.contains(initial_state)&&other.final_states.contains(other.initial_state)){
         final_states=other.final_states;
@@ -155,9 +187,11 @@ template<class StateSet>
 NFA<StateSet>& NFA<StateSet>::operator*(unsigned int n){
     if(!n) return *this;
     //final_states.printf();
-    for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++){
-        //final_states.printf();
-        skip<false>(*i,initial_state);
+    if constexpr(std::is_same<StateSet, Roaring>::value){
+        for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++) skip<false>(*i,initial_state);
+    } else{
+        typename StateSet::iterator i(final_states);
+        while(++i>=0) skip<false>(*i,initial_state);
     }
     final_states.add(initial_state);
     return *this;
