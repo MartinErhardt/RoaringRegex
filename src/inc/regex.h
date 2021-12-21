@@ -213,7 +213,7 @@ namespace Regex{
     class Lexer{
         uint32_t states_n=0;
         template<class NFA_t, class StateSet>
-        NFA_t bracket_expression(const char* start, int* i,uint32_t new_initial, int ps,const char *p,StateSet* tr_table);
+        NFA_t bracket_expression(const char* start, const char** cp2,uint32_t new_initial, int ps,const char *p,StateSet* tr_table);
         template<class NFA_t,class StateSet>
         NFA_t build_NFA(const char* p,StateSet* tr_table);
     public:

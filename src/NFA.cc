@@ -11,11 +11,7 @@ using namespace Regex;
         }())
 Roaring operator+(Roaring& set,int32_t rotate){
     Roaring ret;
-    for(Roaring::const_iterator i = set.begin(); i != set.end(); i++){
-        //std::cout<<"*i"<<*i<<"*i+rotate"<<*i+rotate<<std::endl;
-        ret.add(*i+rotate);
-    }
-    //ret.printf();
+    for(Roaring::const_iterator i = set.begin(); i != set.end(); i++) ret.add(*i+rotate);
     return ret;
 }
 //NFA intances are lightweight objects now => TODO remove move semantics
@@ -77,26 +73,17 @@ NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, StateSet* states
     else{
         final_states=StateSet();
         final_states.add(cur_n+1);
-        //final_states.printf();
     }
 }
 template<class StateSet>
 NFA<StateSet> operator+(NFA<StateSet>& input,int rotate){
     NFA<StateSet> ret(input.initial_state+rotate,input.states_n,input.states);
-    //std::cout<<"input_size: "<<input.size<<std::endl;
     ret.size=input.size;
     for (uint32_t i=input.initial_state;i<input.initial_state+input.size; i++){
-        //std::cout<<"move state: "<<i<<"\tstates_n: "<<input.states_n<<std::endl;
-        for(uint32_t c=0;c<0x80;c++){ 
-            ret.states[i+rotate+input.states_n*(2*c)]=std::move(input.states[i+input.states_n*(2*c)]+rotate);
-            //std::cout<<"c"<<char(c)<<"\ti: "<<i+rotate+input.states_n*(2*c);
-            //ret.states[i+rotate+input.states_n*(2*c)].printf();
-            //std::cout<<std::endl;
-        }
+        for(uint32_t c=0;c<0x80;c++) ret.states[i+rotate+input.states_n*(2*c)]=std::move(input.states[i+input.states_n*(2*c)]+rotate);
         for(uint32_t c=0;c<0x80;c++) ret.states[i+rotate+input.states_n*(1+2*c)]=std::move(input.states[i+input.states_n*(1+2*c)]+rotate);
     }
     ret.final_states=std::move(input.final_states+rotate);
-    //std::cout<<"inpt_size"<<input.size<<std::endl;
     return ret;
 }
 template<class StateSet>
@@ -186,7 +173,6 @@ NFA<StateSet>& NFA<StateSet>::operator|=(NFA& other){
 template<class StateSet>
 NFA<StateSet>& NFA<StateSet>::operator*(unsigned int n){
     if(!n) return *this;
-    //final_states.printf();
     if constexpr(std::is_same<StateSet, Roaring>::value){
         for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++) skip<false>(*i,initial_state);
     } else{
