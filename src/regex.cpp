@@ -13,7 +13,7 @@ template<class NFA_t,class StateSet>
 NFA_t Lexer::bracket_expression(const char* start, const char** cp2,uint32_t new_initial,int ps,const char *p,StateSet* states){
     bool escaped=false;
     while(*cp2-start<ps&&!(!(escaped^=(**cp2=='\\'))&&*((*cp2)++)==']'));
-    //if(*i==ps) throw std::runtime_error("invalid expression!");
+    if(*cp2-start==ps) throw std::runtime_error("invalid expression!");
     return NFA_t(new_initial,states_n,states);
 }
 std::ostream& operator<<(std::ostream& out, PseudoNFA const& pnfa){
@@ -29,27 +29,26 @@ NFA_t Lexer::build_NFA(const char* p, StateSet* states){
     bool escaped=false;
     std::stack<NFA_t> nfas;
     std::stack<operation> ops;
-    ops.push(CONCATENATION);
+    ops.push(BRACKETS);
     int ps=strlen(p);
     const char* cp=p;
     auto clear_stack=[&](){
         NFA_t cur_nfa(std::move(nfas.top())); //FIXME not in printable state
         if(ops.size()){
             ops.pop();
-            while(nfas.size()>1&&ops.top()!=BRACKETS){
+            while(ops.size()>1&&ops.top()!=BRACKETS){
                 if(ops.top()==CONCATENATION){   
                     nfas.pop();
                     ops.pop();
                     nfas.top()*=cur_nfa;
                     cur_nfa=std::move(nfas.top());
-                }
-                else if(ops.top()==OR){
+                }else if(ops.top()==OR){
                     NFA_t intermediate(std::move(cur_nfa));
                     ops.pop();
                     ops.pop();
                     nfas.pop();
                     cur_nfa=std::move(nfas.top());
-                    while(nfas.size()>1&&ops.top()==CONCATENATION){
+                    while(ops.size()>1&&ops.top()==CONCATENATION){
                         nfas.pop();
                         ops.pop();
                         nfas.top()*=cur_nfa;
@@ -59,6 +58,7 @@ NFA_t Lexer::build_NFA(const char* p, StateSet* states){
                 }
             }
         }
+        ops.pop();
         ops.push(CONCATENATION);
         nfas.pop();
         nfas.push(std::move(cur_nfa));

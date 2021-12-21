@@ -23,7 +23,6 @@ public:
         }
         return *this;
     }
-    BitSet<words_n>& operator &=(Roaring& roaring){throw std::runtime_error("wrong StateSet Roaring5");return nullptr;}
     BitSet<words_n>& operator &=(BitSet<words_n> other){
         if constexpr(words_n==1) words[0]&=other.words[0];
         else if(words_n==2){
@@ -36,11 +35,7 @@ public:
             _mm256_store_si256((__m256i *)&words[0], _mm256_and_si256 (s1, s2));
         }
         return *this;
-    }/*
-    BitSet<words_n>& operator=(BitSet<words_n>& other){
-        for(size_t i=0;i<words_n;i++) words[i]=other.words[i];
-        return *this;
-    }*/
+    }
     uint32_t cardinality() const{
         uint64_t ret_val=0;
         for(size_t i=0;i<words_n;i++) ret_val+=_popcnt64(words[i]);
@@ -65,7 +60,6 @@ public:
             uint64_t* cur_w=&words[cur_b>>6];
             while(cur_w<&words[0]+words_n-1&&!*cur_w) cur_w++;
             if(cur_w==&words[0]+words_n-1&&!*cur_w) return -1;
-            //std::cout<<"begin: "<<&words[0]<<"\tfound at: "<<cur_w<<"\tentry: "<<*cur_w<<std::endl;
             uint64_t highest_set_bit = (*cur_w) & -(*cur_w);
             cur_b = (cur_w-&words[0])*sizeof(uint64_t)*8+((uint8_t) __builtin_ctzl(*cur_w));
             (*cur_w)^=highest_set_bit;
@@ -79,7 +73,6 @@ public:
         uint64_t t64=(uint64_t) t;
         int w_n=t>>6;
         words[w_n]|=(1ULL<<(t64&0x3fULL));
-        //std::cout<<"w_n: "<<w_n<<"\tt:"<<t<<"\t(t&0x3f): "<<(t64&0x3fllu)<<"\t new: "<<(1ULL<<(t64&0x3fULL))<<"\t w[w_n]: "<<words[w_n]<<std::endl;
     }
     size_t and_cardinality(BitSet<words_n> new_s){
         BitSet<words_n> plus_s(new_s);
@@ -98,15 +91,6 @@ public:
         uint64_t zero_words[words_n]={0};
         return BitSet<words_n>::iterator(zero_words);
     }
-    
-    //RoaringSetBitForwardIterator begin(){
-    //    throw std::runtime_error("wrong StateSet Roaring1");
-    //    return RoaringSetBitForwardIterator({});
-    //}
-    //RoaringSetBitForwardIterator end(){
-    //    throw std::runtime_error("wrong StateSet Roaring2");
-    //    return RoaringSetBitForwardIterator({});
-    //}
     BitSet<words_n> operator+(int32_t rotate){
         BitSet<words_n> ret;
         if constexpr(words_n==1) ret.words[0]=(words[0]<<rotate);
@@ -123,6 +107,6 @@ public:
         BitSet<words_n>::iterator i(*this);
         std::cout<<"{";
         while(++i>=0) std::cout<<*i<<",";
-        std::cout<<std::endl;
+        std::cout<<"\b}";
     }
 };

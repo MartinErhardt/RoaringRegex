@@ -66,7 +66,6 @@ NFA<StateSet>::NFA(uint32_t cur_n,uint32_t states_n_arg,StateSet*states):PseudoN
 }
 template<class StateSet>
 NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, StateSet* states):PseudoNFA(cur_n,c,2,states),Executable(states_n_arg), states(states){
-    //std::cout<<"single character: "<<c<<"\tcur_n: "<<cur_n<<std::endl;
     states[idx(cur_n,(int)c,true)].add(cur_n+1);
     states[idx(cur_n+1,(int)c,false)].add(cur_n);
     if constexpr(std::is_same<StateSet, Roaring>::value) final_states=std::move(Roaring::bitmapOf(1,cur_n+1));
@@ -121,15 +120,12 @@ template<bool fwd>
 void NFA<StateSet>::skip(uint32_t n,uint32_t k){
     uint32_t to_skip=fwd?k:n;
     uint32_t fixed=fwd?n:k;
-    //std::cout<<"to_skip: "<<to_skip<<"\tfixed: "<<fixed<<std::endl;
     for(unsigned char c=0;c<0x80;c++){
         states[idx(fixed,c,fwd)] |=states[idx(to_skip,c,fwd)];
         if constexpr(std::is_same<StateSet, Roaring>::value){
             for(Roaring::const_iterator j =states[idx(to_skip,c,fwd)].begin();
-                                        j!=states[idx(to_skip,c,fwd)].end();j++){
-                //std::cout<<"inbound: "<<*j;
+                                        j!=states[idx(to_skip,c,fwd)].end();j++)
                 states[idx(*j,c,!fwd)].add(fixed);
-            }
         }else{
             typename StateSet::iterator i(states[idx(to_skip,c,fwd)]);
             while(++i>=0) states[idx(*i,c,!fwd)].add(fixed);
@@ -166,8 +162,6 @@ NFA<StateSet>& NFA<StateSet>::operator|=(NFA& other){
     final_states|=other.final_states;
     skip<true>(initial_state,other.initial_state);
     if(other.final_states.contains(other.initial_state))  final_states.add(initial_state);
-    //std::cout<<"################################# merged to NFA: "<<std::endl;
-    //std::cout<<*this;
     return *this;
 }
 template<class StateSet>
