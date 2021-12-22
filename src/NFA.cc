@@ -1,10 +1,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-#include"BitSet.cc"
+#include"BitSet.h"
+#include"regex.h"
 using namespace roaring;
 using namespace Regex;
 
+namespace Regex{
 #define idx(state, c, fwd) ([&]{                                   \
           if constexpr (fwd) return state+2*states_n*((size_t)c);       \
           else return               state+states_n*(1+2*((size_t)c));\
@@ -57,7 +59,36 @@ NFA<StateSet>& NFA<StateSet>::operator=(NFA<StateSet>&& other){
     return *this;
 }
 template<class StateSet>
-NFA<StateSet>::NFA(uint32_t cur_n,uint32_t states_n_arg,StateSet*states):PseudoNFA(cur_n,1,states),Executable(states_n_arg),states(states){
+void NFA<StateSet>::print()
+{
+    std::cout<<"initial state: "<<initial_state<<std::endl;
+    std::cout<<"buffer_size: "<<states_n<<std::endl;
+    std::cout<<"size: "<<size<<std::endl;
+    std::cout<<"final states: ";
+    final_states.printf();
+    std::cout<<std::endl;
+    for(uint32_t i=initial_state;i<initial_state+size;i++){
+        std::cout<<"state: "<<i<<std::endl;
+        std::cout<<"forward transitions: "<<std::endl;
+        for(unsigned char c=0; c<0x80;c++){
+            const StateSet& r=states[i+2*states_n*((int)c)];
+            if(!r.cardinality()) continue;
+            std::cout<<c<<": ";
+            r.printf();
+            std::cout<<std::endl;
+        }
+        std::cout<<"backward transitions: "<<std::endl;
+        for(unsigned char c=0; c<0x80;c++){
+            const StateSet& r=states[i+states_n*(1+2*((int)c))];
+            if(!r.cardinality()) continue;
+            std::cout<<c<<": ";
+            r.printf();
+            std::cout<<std::endl;
+        }
+    }
+}
+template<class StateSet>
+NFA<StateSet>::NFA(uint32_t cur_n,uint32_t states_n_arg,void*states_arg):PseudoNFA(cur_n,1,states_arg),Executable(states_n_arg),states((StateSet*)states_arg){
     if constexpr(std::is_same<StateSet, Roaring>::value) final_states=std::move(Roaring::bitmapOf(1,cur_n));
     else{
         final_states=StateSet();
@@ -65,7 +96,7 @@ NFA<StateSet>::NFA(uint32_t cur_n,uint32_t states_n_arg,StateSet*states):PseudoN
     }
 }
 template<class StateSet>
-NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, StateSet* states):PseudoNFA(cur_n,c,2,states),Executable(states_n_arg), states(states){
+NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, void* states_arg):PseudoNFA(cur_n,c,2,states_arg),Executable(states_n_arg), states((StateSet*)states_arg){
     states[idx(cur_n,(int)c,true)].add(cur_n+1);
     states[idx(cur_n+1,(int)c,false)].add(cur_n);
     if constexpr(std::is_same<StateSet, Roaring>::value) final_states=std::move(Roaring::bitmapOf(1,cur_n+1));
@@ -74,17 +105,7 @@ NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, StateSet* states
         final_states.add(cur_n+1);
     }
 }
-template<class StateSet>
-NFA<StateSet> operator+(NFA<StateSet>& input,int rotate){
-    NFA<StateSet> ret(input.initial_state+rotate,input.states_n,input.states);
-    ret.size=input.size;
-    for (uint32_t i=input.initial_state;i<input.initial_state+input.size; i++){
-        for(uint32_t c=0;c<0x80;c++) ret.states[i+rotate+input.states_n*(2*c)]=std::move(input.states[i+input.states_n*(2*c)]+rotate);
-        for(uint32_t c=0;c<0x80;c++) ret.states[i+rotate+input.states_n*(1+2*c)]=std::move(input.states[i+input.states_n*(1+2*c)]+rotate);
-    }
-    ret.final_states=std::move(input.final_states+rotate);
-    return ret;
-}
+
 template<class StateSet>
 template<bool fwd>
 NFA<StateSet>& NFA<StateSet>::shift(char c){
@@ -175,4 +196,35 @@ NFA<StateSet>& NFA<StateSet>::operator*(unsigned int n){
     }
     final_states.add(initial_state);
     return *this;
+}
+template class NFA<BitSet<1>>;
+template class NFA<BitSet<2>>;
+template class NFA<BitSet<4>>;
+template class NFA<Roaring>;
+template<class StateSet>
+NFA<StateSet> operator+(NFA<StateSet>& input,int rotate){
+    NFA<StateSet> ret(input.initial_state+rotate,input.states_n,input.states);
+    ret.size=input.size;
+    for (uint32_t i=input.initial_state;i<input.initial_state+input.size; i++){
+        for(uint32_t c=0;c<0x80;c++) ret.states[i+rotate+input.states_n*(2*c)]=std::move(input.states[i+input.states_n*(2*c)]+rotate);
+        for(uint32_t c=0;c<0x80;c++) ret.states[i+rotate+input.states_n*(1+2*c)]=std::move(input.states[i+input.states_n*(1+2*c)]+rotate);
+    }
+    ret.final_states=std::move(input.final_states+rotate);
+    return ret;
+}
+PseudoNFA operator+(PseudoNFA& input,int32_t rotate){return input;};
+std::ostream& operator<<(std::ostream& out, PseudoNFA const& pnfa){
+    out<<"size: "<<pnfa.size<<std::endl;
+    return out;
+}
+template<class StateSet>
+std::ostream& operator<<(std::ostream& out, NFA<StateSet>& nfa){nfa.print();return out;}
+template NFA<Roaring> operator+(NFA<Roaring>& input,int rotate);
+template NFA<BitSet<1>> operator+(NFA<BitSet<1>>& input,int rotate);
+template NFA<BitSet<2>> operator+(NFA<BitSet<2>>& input,int rotate);
+template NFA<BitSet<4>> operator+(NFA<BitSet<4>>& input,int rotate);
+template std::ostream& operator<<(std::ostream& out, NFA<Roaring>& nfa);
+template std::ostream& operator<<(std::ostream& out, NFA<BitSet<1>>& nfa);
+template std::ostream& operator<<(std::ostream& out, NFA<BitSet<2>>& nfa);
+template std::ostream& operator<<(std::ostream& out, NFA<BitSet<4>>& nfa);
 }

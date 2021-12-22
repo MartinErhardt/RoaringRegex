@@ -1,9 +1,10 @@
-SRCS = $(shell find -wholename './src/*.cpp')
+SRCS = $(shell find -wholename './src/*.cc')
+SRCS += $(shell find -wholename './src/*.cpp')
 OBJS = $(addsuffix .o,$(basename $(SRCS)))
 
 CXX = g++
 
-CXXFLAGS = -std=c++17 -g -mavx2 -Wall -Werror -pg -fsanitize=address
+CXXFLAGS = -std=c++17 -oFast -I src/inc -flto -mavx2 -Wall -Werror -pg -fsanitize=address
 all: | CRoaring fast_regex
 fast_regex:  $(OBJS)
 	$(CXX) -o $@ $^ -pg -fsanitize=address
