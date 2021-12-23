@@ -74,6 +74,7 @@ NFA_t Lexer::build_NFA(const char* p, void* states){
             escaped=true;
             continue;
         }
+        //std::cout<<"*cp: "<<*cp<<std::endl;
         switch((*cp)*(!escaped)) {
             case '[':
                 nfas.push(Lexer::bracket_expression<NFA_t>(cp,&cp,nfas.top().initial_state+nfas.top().size,ps-(cp-p),p,states));
@@ -100,25 +101,26 @@ NFA_t Lexer::build_NFA(const char* p, void* states){
                 break;
             case '{':
             {
+                //std::cout<<"hello"<<std::endl;
                 char* cn1;
-                NFA_t repeated(nfas.top());
-                int m=strtol(cp,&cn1,10);
-                for(int i=0;i<m;i++) repeat();
+                int m=strtol(++cp,&cn1,10);
+                for(int i=0;i<m-1;i++) repeat();
+                std::cout<<"m:"<<m<<*cn1<<std::endl;
                 if(*cn1!='}'){
                     char* cn2;
-                    int n=strtol(cn1,&cn2,10);
+                    int n=strtol(++cn1,&cn2,10);
+                    std::cout<<"n:"<<n<<*cn2<<std::endl;
                     if(!n){
                         repeat();
                         nfas.top()*1;
                     } else if(n>m){
-                        repeated|=NFA_t(next_initial(nfas),states_n,states);
-                        for(int k=m;k<n;k++){
-                            nfas.push(repeated);
-                            ops.push(CONCATENATION);
-                        }
+                        repeat();
+                        nfas.top()|=NFA_t(next_initial(nfas),states_n,states);
+                        for(int k=m+1;k<n;k++) repeat();
                     }
-                }
-                --cp;
+                    cp=cn2;
+                } else cp=cn1;
+                std::cout<<"*cp: "<<*cp<<std::endl;
                 break;
             }
             case '^':

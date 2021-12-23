@@ -9,12 +9,12 @@ template<int words_n>
 BitSet<words_n>& BitSet<words_n>::operator |=(BitSet<words_n> other){
     if constexpr(words_n==1) words[0]|=other.words[0];
     else if(words_n==2){
-        __m128i s1 = _mm_lddqu_si128((__m128i const *)&words[0]);
-        __m128i s2 = _mm_lddqu_si128((__m128i const *)&other.words[0]);
+        __m128i s1 = _mm_loadu_si128((__m128i const *)&words[0]);
+        __m128i s2 = _mm_loadu_si128((__m128i const *)&other.words[0]);
         _mm_store_si128((__m128i *)&words[0], _mm_or_si128(s1,s2));
     }else if(words_n==4){
-        __m256i s1 = _mm256_lddqu_si256((__m256i const *)&words[0]);
-        __m256i s2 = _mm256_lddqu_si256((__m256i const *)&other.words[0]);
+        __m256i s1 = _mm256_loadu_si256((__m256i const *)&words[0]);
+        __m256i s2 = _mm256_loadu_si256((__m256i const *)&other.words[0]);
         _mm256_store_si256((__m256i *)&words[0], _mm256_or_si256 (s1, s2));
     }
     return *this;
@@ -23,12 +23,12 @@ template<int words_n>
 BitSet<words_n>& BitSet<words_n>::operator &=(BitSet<words_n> other){
     if constexpr(words_n==1) words[0]&=other.words[0];
     else if(words_n==2){
-        __m128i s1 = _mm_lddqu_si128((__m128i const *)&words[0]);
-        __m128i s2 = _mm_lddqu_si128((__m128i const *)&other.words[0]);
+        __m128i s1 = _mm_loadu_si128((__m128i const *)&words[0]);
+        __m128i s2 = _mm_loadu_si128((__m128i const *)&other.words[0]);
         _mm_store_si128((__m128i *)&words[0], _mm_and_si128(s1,s2));
     }else if(words_n==4){
-        __m256i s1 = _mm256_lddqu_si256((__m256i const *)&words[0]);
-        __m256i s2 = _mm256_lddqu_si256((__m256i const *)&other.words[0]);
+        __m256i s1 = _mm256_loadu_si256((__m256i const *)&words[0]);
+        __m256i s2 = _mm256_loadu_si256((__m256i const *)&other.words[0]);
         _mm256_store_si256((__m256i *)&words[0], _mm256_and_si256 (s1, s2));
     }
     return *this;
@@ -103,10 +103,10 @@ BitSet<words_n> BitSet<words_n>::operator+(int32_t rotate){
     BitSet<words_n> ret;
     if constexpr(words_n==1) ret.words[0]=(words[0]<<rotate);
     else if(words_n==2){
-        __m128i s=_mm_lddqu_si128((__m128i const *)&words[0]);
+        __m128i s=_mm_loadu_si128((__m128i const *)&words[0]);
         _mm_store_si128((__m128i *)&words[0], _mm_slli_epi32(s, rotate));
     }else if(words_n==4){
-        __m256i s=_mm256_lddqu_si256((__m256i const *)&words[0]);
+        __m256i s=_mm256_loadu_si256((__m256i const *)&words[0]);
         _mm256_store_si256((__m256i *)&words[0], _mm256_slli_epi32(s, rotate));
     }
     return ret;
