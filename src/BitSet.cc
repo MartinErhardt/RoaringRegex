@@ -98,16 +98,71 @@ typename BitSet<words_n>::iterator BitSet<words_n>::end(){
     uint64_t zero_words[words_n]={0};
     return BitSet<words_n>::iterator(&zero_words[0]);
 }
+//https://stackoverflow.com/questions/17610696/shift-a-m128i-of-n-bits
+#define SHL128(v, n)                        \
+({                                          \
+    __m128i v1,v2;                          \
+    if((n)>=64){                            \
+        v1=_mm_slli_si128(v,8);             \
+        v1=_mm_slli_epi64(v1,(n)-64);       \
+    }                                       \
+    else{                                   \
+        v1=_mm_slli_epi64(v,n);             \
+        v2=_mm_slli_si128(v,8);             \
+        v2=_mm_srli_epi64(v2,64-(n));       \
+        v1=_mm_or_si128(v1,v2);             \
+    }                                       \
+    v1;                                     \
+})
+//https://stackoverflow.com/questions/20775005/8-bit-shift-operation-in-avx2-with-shifting-in-zeros
+template  <unsigned int N> 
+__m256i _mm256_shift_left(__m256i a)
+{
+    __m256i mask=_mm256_permute2x128_si256(a,a,_MM_SHUFFLE(0,0,3,0));
+    return _mm256_alignr_epi8(a,mask,16-N);
+}
+#define SHL256(v, n)                        \
+({                                          \
+    __m256i v1,v2;                          \
+    if(n>=192){                             \
+        v1=_mm256_shift_left<16>(v);        \
+        v1=_mm256_shift_left<8>(v1);        \
+        v1= _mm256_slli_epi64(v1,(n)-192);  \
+    }else if(n>=128){                       \
+        v1=_mm256_shift_left<16>(v);        \
+        v1=_mm256_slli_epi64(v1,(n)-128);   \
+        v2=_mm256_shift_left<16>(v);        \
+        v2=_mm256_shift_left<8>(v2);        \
+        v2=_mm256_srli_epi64(v2,192-(n));   \
+        v1=_mm256_or_si256(v1,v2);          \
+    }                                       \
+    else if(n>=64){                         \
+        v1=_mm256_shift_left<8>(v);         \
+        v1=_mm256_slli_epi64(v1,(n)-64);    \
+        v2=_mm256_shift_left<16>(v);        \
+        v2=_mm256_srli_epi64(v2,128-(n));   \
+        v1=_mm256_or_si256(v1,v2);          \
+    }                                       \
+    else{                                   \
+        v1=_mm256_slli_epi64(v,n);          \
+        v2=_mm256_shift_left<8>(v);         \
+        v2=_mm256_srli_epi64(v2,64-(n));    \
+        v1=_mm256_or_si256(v1,v2);          \
+    }                                       \
+    v1;                                     \
+})
+
 template<int words_n>
 BitSet<words_n> BitSet<words_n>::operator+(int32_t rotate){
     BitSet<words_n> ret;
     if constexpr(words_n==1) ret.words[0]=(words[0]<<rotate);
     else if(words_n==2){
         __m128i s=_mm_loadu_si128((__m128i const *)&words[0]);
-        _mm_store_si128((__m128i *)&words[0], _mm_slli_epi32(s, rotate));
+        _mm_store_si128((__m128i *)&(ret.words[0]), SHL128(s, rotate));
     }else if(words_n==4){
         __m256i s=_mm256_loadu_si256((__m256i const *)&words[0]);
-        _mm256_store_si256((__m256i *)&words[0], _mm256_slli_epi32(s, rotate));
+        __m256i a=SHL256(s, rotate);
+        _mm256_store_si256((__m256i *)&(ret.words[0]), a);
     }
     return ret;
 }

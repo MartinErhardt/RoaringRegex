@@ -8,14 +8,14 @@
 
 template<int words_n>
 class BitSet{
-    uint64_t words[words_n]={0};
+    alignas(words_n*8) uint64_t words[words_n]={0};
 public:
     BitSet(){};
     BitSet<words_n>& operator |=(BitSet<words_n> other);
     BitSet<words_n>& operator &=(BitSet<words_n> other);
     uint32_t cardinality() const;
     class iterator{
-        uint64_t words[words_n]={0};
+        alignas(words_n*8) uint64_t words[words_n]={0};
         uint8_t cur_b=0;
     public:
         iterator(uint64_t* s);
