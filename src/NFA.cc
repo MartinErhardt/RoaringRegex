@@ -12,8 +12,8 @@ namespace Regex{
           else return               state+states_n*(1+2*((size_t)c));\
         }())
 Roaring operator+(Roaring& set,int32_t rotate){
-    Roaring ret;
-    for(Roaring::const_iterator i = set.begin(); i != set.end(); i++) ret.add(*i+rotate);
+    Roaring ret;//TODO use fastunion
+    for(Roaring::const_iterator i=set.begin(); i!=set.end(); i++) ret.add(*i+rotate);
     return ret;
 }
 //NFA intances are lightweight objects now => TODO remove move semantics

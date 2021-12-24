@@ -41,7 +41,7 @@ uint32_t BitSet<words_n>::cardinality() const{
 }
 template<int words_n>
 void BitSet<words_n>::complement(){
-    uint64_t mask[words_n];
+    alignas(words_n*8) uint64_t mask[words_n];
     for(int i=0;i<words_n;i++) mask[i]=(uint64_t)-1ll;
     if constexpr(words_n==1) words[0]^=mask[0];
     else if(words_n==2){

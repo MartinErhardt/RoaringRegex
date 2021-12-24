@@ -102,6 +102,13 @@ NFA_t Lexer::build_NFA(const char* p, void* states){
             case ')':
                 clear_stack();
                 break;
+            case '.':{
+                BitSet<2> charset;
+                charset.complement();
+                nfas.push(std::move(NFA_t(next_initial(nfas),charset,states_n,states)));
+                ops.push(CONCATENATION);
+                break;
+            }
             case '*':
                 nfas.top()*1;
                 break;
