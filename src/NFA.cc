@@ -7,8 +7,8 @@ using namespace roaring;
 using namespace Regex;
 
 namespace Regex{
-#define idx(state, c, fwd) ([&]{                                   \
-          if constexpr (fwd) return state+2*states_n*((size_t)c);       \
+#define idx(state, c, fwd) ([&]{                                     \
+          if constexpr (fwd) return state+2*states_n*((size_t)c);    \
           else return               state+states_n*(1+2*((size_t)c));\
         }())
 Roaring operator+(Roaring& set,int32_t rotate){
@@ -59,8 +59,7 @@ NFA<StateSet>& NFA<StateSet>::operator=(NFA<StateSet>&& other){
     return *this;
 }
 template<class StateSet>
-void NFA<StateSet>::print()
-{
+void NFA<StateSet>::print(){
     std::cout<<"initial state: "<<initial_state<<std::endl;
     std::cout<<"buffer_size: "<<states_n<<std::endl;
     std::cout<<"size: "<<size<<std::endl;
@@ -105,7 +104,19 @@ NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, void* states_arg
         final_states.add(cur_n+1);
     }
 }
-
+template<class StateSet>
+NFA<StateSet>::NFA(uint32_t cur_n,BitSet<2>& cs,uint32_t states_n_arg, void* states_arg):PseudoNFA(cur_n,'a',2,states_arg),Executable(states_n_arg), states((StateSet*)states_arg){
+    typename BitSet<2>::iterator i(cs);
+    while(++i>=0){
+        states[idx(cur_n,*i,true)].add(cur_n+1);
+        states[idx(cur_n+1,*i,false)].add(cur_n);
+    }
+    if constexpr(std::is_same<StateSet, Roaring>::value) final_states=std::move(Roaring::bitmapOf(1,cur_n+1));
+    else{
+        final_states=StateSet();
+        final_states.add(cur_n+1);
+    }
+}
 template<class StateSet>
 template<bool fwd>
 NFA<StateSet>& NFA<StateSet>::shift(char c){
@@ -123,13 +134,11 @@ NFA<StateSet>& NFA<StateSet>::shift(char c){
     return *this;
 }
 template<class StateSet>
-NFA<StateSet>& NFA<StateSet>::operator<<(char c)
-{
+NFA<StateSet>& NFA<StateSet>::operator<<(char c){
     return shift<true>(c);
 }
 template<class StateSet>
-NFA<StateSet>& NFA<StateSet>::operator>>(char c)
-{
+NFA<StateSet>& NFA<StateSet>::operator>>(char c){
     return shift<false>(c);
 }
 template<class StateSet>
@@ -205,10 +214,8 @@ template<class StateSet>
 NFA<StateSet> operator+(NFA<StateSet>& input,int rotate){
     NFA<StateSet> ret(input.initial_state+rotate,input.states_n,input.states);
     ret.size=input.size;
-    for (uint32_t i=input.initial_state;i<input.initial_state+input.size; i++){
-        for(uint32_t c=0;c<0x80;c++) ret.states[i+rotate+input.states_n*(2*c)]=std::move(input.states[i+input.states_n*(2*c)]+rotate);
-        for(uint32_t c=0;c<0x80;c++) ret.states[i+rotate+input.states_n*(1+2*c)]=std::move(input.states[i+input.states_n*(1+2*c)]+rotate);
-    }
+    for(uint32_t i=input.initial_state;i<input.initial_state+input.size; i++)
+        for(int16_t c=0;c<0x100;c++) ret.states[i+rotate+input.states_n*(2*c-(c>=0x80)*0xFF)]=std::move(input.states[i+input.states_n*(2*c-(c>=0x80)*0xFF)]+rotate);
     ret.final_states=std::move(input.final_states+rotate);
     return ret;
 }

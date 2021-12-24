@@ -10,14 +10,32 @@
 #include<stack>
 #include<iostream>
 #include<chrono>
+#include"BitSet.h"
 using namespace Regex;
 using namespace roaring;
 template<typename NFA_t>
-NFA_t Lexer::bracket_expression(const char* start, const char** cp2,uint32_t new_initial,int ps,const char *p,void* states){
+NFA_t Lexer::bracket_expression(const char* start,const char** cp2,uint32_t new_initial,int ps,const char *p,void* states){
     bool escaped=false;
-    while(*cp2-start<ps&&!(!(escaped^=(**cp2=='\\'))&&*((*cp2)++)==']'));
+    bool complement=*(++*cp2)=='^';
+    BitSet<2> charset;
+    while(*cp2+1<start+ps&&!(**cp2==']'&&!escaped)){
+        if(!escaped){
+            char next=*((*cp2)+1);
+            if(next!=']'&&*cp2+2<start+ps){
+                char nextnext=*((*cp2)+2);
+                if(next=='-'&&nextnext!=']'){
+                    for(char c=**cp2;c<=nextnext;c++) charset.add(c);
+                    ++++++(*cp2);
+                    continue;
+                }
+            }
+        }
+        escaped=!escaped&&(**cp2=='\\');
+        charset.add(*((*cp2)++));
+    }
     if(*cp2-start==ps) throw std::runtime_error("invalid expression!");
-    return NFA_t(new_initial,states_n,states);
+    if(complement) charset.complement();
+    return NFA_t(new_initial,charset,states_n,states);
 }
 template<typename NFA_t>
 NFA_t Lexer::build_NFA(const char* p, void* states){
@@ -61,7 +79,6 @@ NFA_t Lexer::build_NFA(const char* p, void* states){
     auto repeat=[&nfas,&ops](){
         nfas.push(std::move(nfas.top()+(((int32_t)nfas.top().size))));
         ops.push(CONCATENATION);
-        //std::cout<<"top:\n"<<nfas.top()<<std::endl;
     };
     auto next_initial=[](std::stack<NFA_t>& stack)->uint64_t{
         return (stack.empty()?0:stack.top().initial_state+stack.top().size);
@@ -71,10 +88,9 @@ NFA_t Lexer::build_NFA(const char* p, void* states){
             escaped=true;
             continue;
         }
-//#define next_initial(stack) (stack.empty()?0:stack.top().initial_state+stack.top().size)
         switch((*cp)*(!escaped)) {
             case '[':
-                nfas.push(Lexer::bracket_expression<NFA_t>(cp,&cp,nfas.top().initial_state+nfas.top().size,ps-(cp-p),p,states));
+                nfas.push(std::move(Lexer::bracket_expression<NFA_t>(cp,&cp,next_initial(nfas),ps-(cp-p),p,states)));
                 ops.push(CONCATENATION);
                 break;
             case '(':
@@ -96,8 +112,7 @@ NFA_t Lexer::build_NFA(const char* p, void* states){
             case '?':
                 nfas.top()|=NFA_t(next_initial(nfas),states_n,states);
                 break;
-            case '{':
-            {
+            case '{':{
                 char* cn1;
                 int m=strtol(++cp,&cn1,10);
                 for(int i=0;i<m-1;i++) repeat();
@@ -134,28 +149,26 @@ NFA_t Lexer::build_NFA(const char* p, void* states){
     nfas.pop();
     return new_nfa;
 }
+template<unsigned int k>
+void Lexer::alloc_BitSetNFA(const char* p){
+    memory_pool_size=sizeof(BitSet<k>)*0x100*states_n;
+    memory_pool=malloc(memory_pool_size);
+    memset(static_cast<char*>(memory_pool),0,memory_pool_size);
+    BitSet<k>* states=reinterpret_cast<BitSet<k>*>(memory_pool);
+    exec=std::make_unique<NFA<BitSet<k>>>(build_NFA<NFA<BitSet<k>>>(p,states));
+}
 Lexer::Lexer(const char* p){
     states_n=build_NFA<PseudoNFA>(p,nullptr).size;
-    void* memory_pool;
-    size_t memory_pool_size;
     if(states_n>256){
         memory_pool_size=sizeof(Roaring)*0x100*states_n+sizeof(Roaring*)*states_n+sizeof(uint32_t*)*states_n;
         memory_pool=malloc(memory_pool_size);
         memset(static_cast<char*>(memory_pool),0,memory_pool_size); // conforms to strict-aliasing; initializes all Roaring bitmaps
-        
         Roaring* states=reinterpret_cast<Roaring*>(memory_pool);
         exec=std::make_unique<NFA<Roaring>>(build_NFA<NFA<Roaring>>(p,states));
     }
-#define alloc(k){                                                                   \
-        memory_pool_size=sizeof(BitSet<k>)*0x100*states_n;                          \
-        memory_pool=malloc(memory_pool_size);                                       \
-        memset(static_cast<char*>(memory_pool),0,memory_pool_size);                 \
-        BitSet<k>* states=reinterpret_cast<BitSet<k>*>(memory_pool);                \
-        exec=std::make_unique<NFA<BitSet<k>>>(build_NFA<NFA<BitSet<k>>>(p,states)); \
-    }
-    else if(states_n>128)   alloc(4)
-    else if(states_n>64)    alloc(2)
-    else                    alloc(1)
+    else if(states_n>128)   alloc_BitSetNFA<4>(p);
+    else if(states_n>64)    alloc_BitSetNFA<2>(p);
+    else                    alloc_BitSetNFA<1>(p);
     exec->init(memory_pool, memory_pool_size, states_n);
 }
 int main(){

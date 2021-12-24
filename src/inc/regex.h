@@ -19,6 +19,7 @@ namespace Regex{
         PseudoNFA(uint32_t cur_n,uint32_t states_n):size(states_n),initial_state(cur_n){};
         PseudoNFA(uint32_t cur_n,uint32_t states_n,void* tr_table){size=1;initial_state=cur_n;};         //create empty NFA
         PseudoNFA(uint32_t cur_n,char c,uint32_t states_n,void* tr_table){size=2;initial_state=cur_n;};  //create NFA accepting just c
+        PseudoNFA(uint32_t cur_n,BitSet<2>& cs,uint32_t states_n,void* states){size=2;initial_state=cur_n;};
         PseudoNFA& operator=(PseudoNFA& other){size=other.size;initial_state=other.initial_state; return *this;}
         PseudoNFA& operator=(PseudoNFA&& other){size=other.size;other.size=0; initial_state=other.initial_state; return *this;}
         PseudoNFA& operator|=(PseudoNFA&& other){return *this|=other;};             //Union
@@ -141,8 +142,9 @@ namespace Regex{
         NFA(){};
         NFA(const NFA& to_copy);
         NFA(NFA&& to_move);
-        NFA(uint32_t cur_n,uint32_t states_n,void* states);         //create empty NFA
-        NFA(uint32_t cur_n,char c,uint32_t states_n,void* states);  //create NFA accepting just c
+        NFA(uint32_t cur_n,uint32_t states_n,void* states);             //create empty NFA
+        NFA(uint32_t cur_n,char c,uint32_t states_n,void* states);      //create NFA accepting just c
+        NFA(uint32_t cur_n,BitSet<2>& cs,uint32_t states_n,void* states);//create NFA accepting all characters in cs
         void reset(){current_states[1]=final_states;};
         NFA& operator=(NFA& other);
         NFA& operator=(NFA&& other);
@@ -169,6 +171,10 @@ namespace Regex{
         NFA_t bracket_expression(const char* start, const char** cp2,uint32_t new_initial, int ps,const char *p,void* tr_table);
         template<typename NFA_t>
         NFA_t build_NFA(const char* p,void* tr_table);
+        template<unsigned int k>
+        void alloc_BitSetNFA(const char* p);
+        size_t memory_pool_size;
+        void* memory_pool;
     public:
         std::unique_ptr<Executable> exec;
         Lexer(const char* p);

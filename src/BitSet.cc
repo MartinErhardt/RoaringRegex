@@ -6,7 +6,7 @@
 #include <iostream>
 // uncompressed bitmap implementation for small state spaces
 template<int words_n>
-BitSet<words_n>& BitSet<words_n>::operator |=(BitSet<words_n> other){
+BitSet<words_n>& BitSet<words_n>::operator|=(BitSet<words_n> other){
     if constexpr(words_n==1) words[0]|=other.words[0];
     else if(words_n==2){
         __m128i s1 = _mm_loadu_si128((__m128i const *)&words[0]);
@@ -20,7 +20,7 @@ BitSet<words_n>& BitSet<words_n>::operator |=(BitSet<words_n> other){
     return *this;
 }
 template<int words_n>
-BitSet<words_n>& BitSet<words_n>::operator &=(BitSet<words_n> other){
+BitSet<words_n>& BitSet<words_n>::operator&=(BitSet<words_n> other){
     if constexpr(words_n==1) words[0]&=other.words[0];
     else if(words_n==2){
         __m128i s1 = _mm_loadu_si128((__m128i const *)&words[0]);
@@ -38,6 +38,21 @@ uint32_t BitSet<words_n>::cardinality() const{
     uint64_t ret_val=0;
     for(size_t i=0;i<words_n;i++) ret_val+=_popcnt64(words[i]);
     return ret_val;
+}
+template<int words_n>
+void BitSet<words_n>::complement(){
+    uint64_t mask[words_n];
+    for(int i=0;i<words_n;i++) mask[i]=(uint64_t)-1ll;
+    if constexpr(words_n==1) words[0]^=mask[0];
+    else if(words_n==2){
+        __m128i m = _mm_loadu_si128((__m128i const *)&mask);
+        __m128i s1 = _mm_loadu_si128((__m128i const *)&words[0]);
+        _mm_store_si128((__m128i *)&words[0], _mm_xor_si128(s1,m));
+    }else if(words_n==4){
+        __m256i s1 = _mm256_loadu_si256((__m256i const *)&words[0]);
+        __m256i m = _mm256_loadu_si256((__m256i const *)&mask);
+        _mm256_store_si256((__m256i *)&words[0], _mm256_xor_si256(s1,m));
+    }
 }
 template<int words_n>
 BitSet<words_n>::iterator::iterator(BitSet<words_n> s){
@@ -105,8 +120,7 @@ typename BitSet<words_n>::iterator BitSet<words_n>::end(){
     if((n)>=64){                            \
         v1=_mm_slli_si128(v,8);             \
         v1=_mm_slli_epi64(v1,(n)-64);       \
-    }                                       \
-    else{                                   \
+    }else{                                  \
         v1=_mm_slli_epi64(v,n);             \
         v2=_mm_slli_si128(v,8);             \
         v2=_mm_srli_epi64(v2,64-(n));       \
@@ -135,15 +149,13 @@ __m256i _mm256_shift_left(__m256i a)
         v2=_mm256_shift_left<8>(v2);        \
         v2=_mm256_srli_epi64(v2,192-(n));   \
         v1=_mm256_or_si256(v1,v2);          \
-    }                                       \
-    else if(n>=64){                         \
+    }else if(n>=64){                        \
         v1=_mm256_shift_left<8>(v);         \
         v1=_mm256_slli_epi64(v1,(n)-64);    \
         v2=_mm256_shift_left<16>(v);        \
         v2=_mm256_srli_epi64(v2,128-(n));   \
         v1=_mm256_or_si256(v1,v2);          \
-    }                                       \
-    else{                                   \
+    }else{                                  \
         v1=_mm256_slli_epi64(v,n);          \
         v2=_mm256_shift_left<8>(v);         \
         v2=_mm256_srli_epi64(v2,64-(n));    \
@@ -158,11 +170,11 @@ BitSet<words_n> BitSet<words_n>::operator+(int32_t rotate){
     if constexpr(words_n==1) ret.words[0]=(words[0]<<rotate);
     else if(words_n==2){
         __m128i s=_mm_loadu_si128((__m128i const *)&words[0]);
-        _mm_store_si128((__m128i *)&(ret.words[0]), SHL128(s, rotate));
+        _mm_store_si128((__m128i *)&ret.words[0], SHL128(s, rotate));
     }else if(words_n==4){
         __m256i s=_mm256_loadu_si256((__m256i const *)&words[0]);
         __m256i a=SHL256(s, rotate);
-        _mm256_store_si256((__m256i *)&(ret.words[0]), a);
+        _mm256_store_si256((__m256i *)&ret.words[0], a);
     }
     return ret;
 }
