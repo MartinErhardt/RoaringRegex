@@ -95,7 +95,7 @@ void BitSet<words_n>::add(uint32_t t){
 template<int words_n>
 size_t BitSet<words_n>::and_cardinality(BitSet<words_n> new_s){
     BitSet<words_n> plus_s(new_s);
-    plus_s&=new_s;
+    plus_s&=*this;
     return plus_s.cardinality();
 }
 template<int words_n>

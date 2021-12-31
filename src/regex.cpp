@@ -14,7 +14,7 @@
 using namespace Regex;
 using namespace roaring;
 template<typename NFA_t>
-NFA_t Lexer::bracket_expression(const char* start,const char** cp2,uint32_t new_initial,int ps,const char *p,void* states){
+NFA_t RRegex::bracket_expression(const char* start,const char** cp2,uint32_t new_initial,int ps,const char *p,void* states){
     bool escaped=false;
     bool complement=*(++*cp2)=='^';
     BitSet<2> charset;
@@ -38,7 +38,7 @@ NFA_t Lexer::bracket_expression(const char* start,const char** cp2,uint32_t new_
     return NFA_t(new_initial,charset,states_n,states);
 }
 template<typename NFA_t>
-NFA_t Lexer::build_NFA(const char* p, void* states){
+NFA_t RRegex::build_NFA(const char* p, void* states){
     bool escaped=false;
     std::stack<NFA_t> nfas;
     std::stack<operation> ops;
@@ -90,7 +90,7 @@ NFA_t Lexer::build_NFA(const char* p, void* states){
         }
         switch((*cp)*(!escaped)) {
             case '[':
-                nfas.push(std::move(Lexer::bracket_expression<NFA_t>(cp,&cp,next_initial(nfas),ps-(cp-p),p,states)));
+                nfas.push(std::move(RRegex::bracket_expression<NFA_t>(cp,&cp,next_initial(nfas),ps-(cp-p),p,states)));
                 ops.push(CONCATENATION);
                 break;
             case '(':
@@ -157,14 +157,14 @@ NFA_t Lexer::build_NFA(const char* p, void* states){
     return new_nfa;
 }
 template<unsigned int k>
-void Lexer::alloc_BitSetNFA(const char* p){
+void RRegex::alloc_BitSetNFA(const char* p){
     memory_pool_size=sizeof(BitSet<k>)*0x100*states_n;
     memory_pool=malloc(memory_pool_size);
     memset(static_cast<char*>(memory_pool),0,memory_pool_size);
     BitSet<k>* states=reinterpret_cast<BitSet<k>*>(memory_pool);
     exec=std::make_unique<NFA<BitSet<k>>>(build_NFA<NFA<BitSet<k>>>(p,states));
 }
-Lexer::Lexer(const char* p){
+RRegex::RRegex(const char* p){
     states_n=build_NFA<PseudoNFA>(p,nullptr).size;
     if(states_n>256){
         memory_pool_size=sizeof(Roaring)*0x100*states_n+sizeof(Roaring*)*states_n+sizeof(uint32_t*)*states_n;
@@ -187,11 +187,14 @@ int main(){
     text[strlen(text)-1]='\0';
     pattern[strlen(pattern)-1]='\0';
     auto start_time = std::chrono::high_resolution_clock::now();
-    Lexer l(pattern);
+    RRegex r(pattern);
     auto end_time = std::chrono::high_resolution_clock::now();
     std::cout<<"################################# final NFA: "<<std::endl;
-    l.exec->print();
-    std::cout<<"time: " <<(end_time - start_time)/std::chrono::milliseconds(1) << "ms\n";
+    r.exec->print();
+    std::cout<<"time: " <<std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms\n";
+    RRegex::iterator cur(text,r);
+    RRegex::iterator end;
+    for(;cur!=end;cur++) std::cout<<"match: "<<*cur<<std::endl;
     free(text);
     free(pattern);
     return 0;

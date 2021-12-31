@@ -32,17 +32,14 @@ namespace Regex{
         void* memory_pool=nullptr;
         size_t memory_pool_size=0;
         bool moved_from = false;
-        char* cur_s_fwd = nullptr;
-        char* cur_s_bwd = nullptr;
-        char* begin_s   = nullptr;
-        #define FLAG_ACCEPTING   (1<<1)
-        #define FLAG_INITIAL     (1<<2)
+        #define FLAG_ACCEPTING   (1<<0)
+        #define FLAG_INITIAL     (1<<1)
+    public: 
+        size_t states_n=0;
         virtual uint8_t operator*()            = 0;
         virtual Executable& operator<<(char c) = 0;            //process forward
         virtual Executable& operator>>(char c) = 0;            //process in reverse order
         virtual void reset()                   = 0;
-    public: 
-        size_t states_n=0;
     protected:
         uint32_t*  gather_for_fastunion=nullptr;                // owned by memory_pool
         Roaring**   select_for_fastunion=nullptr;               // owned by memory_pool
@@ -84,39 +81,6 @@ namespace Regex{
             Executable(Executable& exe)
             =delete;
             Executable(Executable&& exe){(*this)=std::move(exe);};
-            char* operator<<(char* s){
-                if(!begin_s){
-                    begin_s=s;
-                    cur_s_fwd=begin_s;
-                    *this<<'\0';
-                }
-                while(!(*(*this<<*(cur_s_fwd++))&FLAG_ACCEPTING)&&*(cur_s_fwd-1));
-                if(!(*(--cur_s_fwd))&&**this&FLAG_ACCEPTING){
-                    char* intermediate=cur_s_fwd;
-                    cur_s_fwd=cur_s_bwd=nullptr;
-                    return intermediate-1; //minus null character
-                } else if(!*cur_s_fwd){
-                    cur_s_fwd=cur_s_bwd=nullptr;
-                    return nullptr;
-                }else{
-                    cur_s_bwd=cur_s_fwd;
-                    return cur_s_fwd;
-                }
-            };
-            char* operator>>(char* s){
-                if(cur_s_bwd==cur_s_fwd) reset();
-                while(!(*(*this>>*(cur_s_bwd--))&FLAG_INITIAL)&&cur_s_bwd+1>begin_s);
-                if(begin_s==++cur_s_bwd&&**this&FLAG_INITIAL){
-                    cur_s_bwd=cur_s_fwd;
-                    return begin_s;
-                }
-                else if(begin_s==cur_s_bwd){
-                    cur_s_bwd=cur_s_fwd;
-                    *this>>'\0';
-                    if(**this&FLAG_INITIAL) return begin_s;
-                    else return nullptr;
-                } else return cur_s_bwd;
-            };
             virtual ~Executable(){
                 if(!moved_from&&memory_pool){
                     if(states_n>256){
@@ -145,7 +109,7 @@ namespace Regex{
         NFA(uint32_t cur_n,uint32_t states_n,void* states);             //create empty NFA
         NFA(uint32_t cur_n,char c,uint32_t states_n,void* states);      //create NFA accepting just c
         NFA(uint32_t cur_n,BitSet<2>& cs,uint32_t states_n,void* states);//create NFA accepting all characters in cs
-        void reset(){current_states[1]=final_states;};
+        void reset(){current_states[0]=final_states;};
         NFA& operator=(NFA& other);
         NFA& operator=(NFA&& other);
         NFA& operator|=(NFA&& other){return *this|=other;};     //Union
@@ -165,7 +129,13 @@ namespace Regex{
     std::ostream& operator<<(std::ostream& out, PseudoNFA const& nfa);
     template<class StateSet>
     std::ostream& operator<<(std::ostream& out, NFA<StateSet>& nfa);
-    class Lexer{
+    class Match{
+    public:
+        char* start;
+        char* end;
+        std::string str(){return std::string(start,end-start);}
+    };
+    class RRegex{
         uint32_t states_n=0;
         template<typename NFA_t>
         NFA_t bracket_expression(const char* start, const char** cp2,uint32_t new_initial, int ps,const char *p,void* tr_table);
@@ -177,16 +147,58 @@ namespace Regex{
         void* memory_pool;
     public:
         std::unique_ptr<Executable> exec;
-        Lexer(const char* p);
+        RRegex(const char* p);
+        class iterator{
+            char* cur_s     = nullptr;
+            char* begin_s   = nullptr;
+            size_t cur;
+            std::vector<Match> matches;
+            RRegex* r=nullptr;
+        public:
+            iterator(){
+                cur=0;
+                Match m;
+                m.end=nullptr;
+                m.start=nullptr;
+                matches.push_back(m);
+            }
+            iterator(char* s_begin, RRegex& r_arg): begin_s(s_begin),r(&r_arg){
+                cur=0;
+                Match m;
+                m.end=begin_s;
+                m.start=nullptr;
+                matches.push_back(m);
+                *(r->exec)<<'\0';
+                (*this)++;
+                //cur--;
+            };
+            bool operator!=(RRegex::iterator i2){
+                return matches[cur].end!=i2.matches[i2.cur].end;
+            };
+            char* operator<<(char* s);
+            char* operator>>(char* s);
+            void operator++(){
+                //std::cout<<"hello!!!"<<std::endl;
+                if(++cur>=matches.size()){
+                    Match m;
+                    cur_s=matches[matches.size()-1].end;
+                    m.end=(*this)<<matches[matches.size()-1].end;
+                    //std::cout<<"m.end"<<m.end-matches[0].end;
+                    m.start=nullptr;
+                    matches.push_back(m);
+                }
+            };
+            void operator++(int){++(*this);};
+            std::string operator*(){
+                if(!matches[cur].start){
+                    r->exec->reset();
+                    cur_s=matches[cur].end-1;
+                    matches[cur].start=(*this)>>matches[cur].end;
+                }
+                //std::cout<<"start: "<<matches[cur].start<<std::endl;
+                return matches[cur].str();
+            };
+        };
+        
     };
-    /*
-    class FRegexIterator{
-        NFA nfa;
-        unsigned int cur=0;
-        using iterator_category = std::forward_iterator_tag;
-        using difference_type   = size_t;
-        using value_type        = char*;
-        using pointer           = char**;  // or also value_type*
-        using reference         = (char*)&;  // or also value_type&
-    };*/
 }

@@ -4,7 +4,7 @@ OBJS = $(addsuffix .o,$(basename $(SRCS)))
 
 CXX = g++
 
-CXXFLAGS = -std=c++17 -I src/inc -oFast -flto -mavx2 -Wall -Werror
+CXXFLAGS = -std=c++17 -I src/inc -flto -mavx2 -Wall -Werror
 all: | CRoaring fast_regex
 fast_regex:  $(OBJS)
 	$(CXX) -o $@ $^ -pg -fsanitize=address

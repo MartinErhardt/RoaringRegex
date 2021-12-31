@@ -129,17 +129,26 @@ NFA<StateSet>& NFA<StateSet>::shift(char c){
                                             const_cast<const Roaring**>(select_for_fastunion));
     }else{
         typename StateSet::iterator i(current_states[fwd]);
+        current_states[fwd]=StateSet();
         while(++i>=0) current_states[fwd]|=states[idx(*i,c,fwd)];
     }
+    //current_states[fwd].printf();
     return *this;
 }
 template<class StateSet>
 NFA<StateSet>& NFA<StateSet>::operator<<(char c){
-    return shift<true>(c);
+    current_states[1].add(initial_state);
+    //std::cout<<"pre<< "<<c; current_states[1].printf();std::cout<<std::endl;
+    shift<true>(c);
+    //std::cout<<"post<<"; current_states[1].printf();std::cout<<std::endl;
+    return *this;
 }
 template<class StateSet>
 NFA<StateSet>& NFA<StateSet>::operator>>(char c){
-    return shift<false>(c);
+    //std::cout<<"pre >>"<<c; current_states[0].printf();std::cout<<std::endl;
+    shift<false>(c);
+    //std::cout<<"post>>"; current_states[0].printf();std::cout<<std::endl;
+    return *this;
 }
 template<class StateSet>
 uint8_t NFA<StateSet>::operator*(){
@@ -234,4 +243,4 @@ template std::ostream& operator<<(std::ostream& out, NFA<Roaring>& nfa);
 template std::ostream& operator<<(std::ostream& out, NFA<BitSet<1>>& nfa);
 template std::ostream& operator<<(std::ostream& out, NFA<BitSet<2>>& nfa);
 template std::ostream& operator<<(std::ostream& out, NFA<BitSet<4>>& nfa);
-}
+} //Regex
