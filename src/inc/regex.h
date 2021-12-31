@@ -50,8 +50,8 @@ namespace Regex{
             void init(void* memory_pool_arg, size_t memory_pool_size_arg, size_t states_n_arg){
                 states_n=states_n_arg;
                 if(states_n>256){
-                    gather_for_fastunion=reinterpret_cast<uint32_t*>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n);
-                    select_for_fastunion=reinterpret_cast<Roaring**>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n+sizeof(Roaring*)*states_n);
+                    gather_for_fastunion=reinterpret_cast<uint32_t*>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n*0x100);
+                    select_for_fastunion=reinterpret_cast<Roaring**>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n*0x100+sizeof(Roaring*)*states_n);
                 }
                 memory_pool=memory_pool_arg;
                 memory_pool_size=memory_pool_size_arg;
@@ -100,7 +100,7 @@ namespace Regex{
         template<bool fwd> void skip(uint32_t n,uint32_t k);
         template<bool fwd> NFA& shift(char c);
     public:
-        StateSet*  states;                                      //owned first by Parser then Executable
+        StateSet*   states;                                      //owned first by Parser then Executable
         StateSet    current_states[2];
         StateSet    final_states;
         NFA(){};
@@ -170,34 +170,15 @@ namespace Regex{
                 matches.push_back(m);
                 *(r->exec)<<'\0';
                 (*this)++;
-                //cur--;
             };
             bool operator!=(RRegex::iterator i2){
                 return matches[cur].end!=i2.matches[i2.cur].end;
             };
             char* operator<<(char* s);
             char* operator>>(char* s);
-            void operator++(){
-                //std::cout<<"hello!!!"<<std::endl;
-                if(++cur>=matches.size()){
-                    Match m;
-                    cur_s=matches[matches.size()-1].end;
-                    m.end=(*this)<<matches[matches.size()-1].end;
-                    //std::cout<<"m.end"<<m.end-matches[0].end;
-                    m.start=nullptr;
-                    matches.push_back(m);
-                }
-            };
+            void operator++();
             void operator++(int){++(*this);};
-            std::string operator*(){
-                if(!matches[cur].start){
-                    r->exec->reset();
-                    cur_s=matches[cur].end-1;
-                    matches[cur].start=(*this)>>matches[cur].end;
-                }
-                //std::cout<<"start: "<<matches[cur].start<<std::endl;
-                return matches[cur].str();
-            };
+            std::string operator*();
         };
         
     };
