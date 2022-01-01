@@ -40,6 +40,8 @@ namespace Regex{
         virtual Executable& operator<<(char c) = 0;            //process forward
         virtual Executable& operator>>(char c) = 0;            //process in reverse order
         virtual void reset()                   = 0;
+        virtual void reset_all()               = 0;
+        virtual Executable* create_copy()      = 0;
     protected:
         uint32_t*  gather_for_fastunion=nullptr;                // owned by memory_pool
         Roaring**   select_for_fastunion=nullptr;               // owned by memory_pool
@@ -109,7 +111,19 @@ namespace Regex{
         NFA(uint32_t cur_n,uint32_t states_n,void* states);             //create empty NFA
         NFA(uint32_t cur_n,char c,uint32_t states_n,void* states);      //create NFA accepting just c
         NFA(uint32_t cur_n,BitSet<2>& cs,uint32_t states_n,void* states);//create NFA accepting all characters in cs
-        void reset(){current_states[0]=final_states;};
+        void reset(){
+            current_states[0]=final_states;
+        };
+        void reset_all(){
+            if constexpr(std::is_same<StateSet, Roaring>::value){
+                current_states[1]=std::move(Roaring::bitmapOf(1,initial_state));
+            }else{
+                StateSet s;
+                s.add(initial_state);
+                current_states[1]=s;
+            }
+            current_states[0]=final_states;
+        };
         NFA& operator=(NFA& other);
         NFA& operator=(NFA&& other);
         NFA& operator|=(NFA&& other){return *this|=other;};     //Union
@@ -120,6 +134,7 @@ namespace Regex{
         uint8_t operator*();
         NFA& operator>>(char c);
         NFA& operator<<(char c);
+        NFA* create_copy(){return new NFA(*this);}
         void print();
     };
     PseudoNFA operator+(PseudoNFA& input,int32_t rotate);
@@ -148,30 +163,35 @@ namespace Regex{
     public:
         std::unique_ptr<Executable> exec;
         RRegex(const char* p);
-        class iterator{
+        class LazyIterator{
             char* cur_s     = nullptr;
+            char* limit     = nullptr;
             char* begin_s   = nullptr;
             size_t cur;
             std::vector<Match> matches;
-            RRegex* r=nullptr;
+            std::unique_ptr<Executable> exe=nullptr;
         public:
-            iterator(){
+            LazyIterator(){
                 cur=0;
                 Match m;
                 m.end=nullptr;
                 m.start=nullptr;
+                limit=nullptr;
                 matches.push_back(m);
             }
-            iterator(char* s_begin, RRegex& r_arg): begin_s(s_begin),r(&r_arg){
+            LazyIterator(char* s_begin, RRegex& r_arg): begin_s(s_begin),
+            exe(r_arg.exec->create_copy()) // TODO create copy of NFA
+            {
                 cur=0;
                 Match m;
+                limit=begin_s;
                 m.end=begin_s;
                 m.start=nullptr;
                 matches.push_back(m);
-                *(r->exec)<<'\0';
+                *exe<<'\0';
                 (*this)++;
             };
-            bool operator!=(RRegex::iterator i2){
+            bool operator!=(RRegex::LazyIterator& i2){
                 return matches[cur].end!=i2.matches[i2.cur].end;
             };
             char* operator<<(char* s);

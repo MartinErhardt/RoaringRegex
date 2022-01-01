@@ -192,8 +192,8 @@ int main(){
     std::cout<<"################################# final NFA: "<<std::endl;
     r.exec->print();
     std::cout<<"time: " <<std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms\n";
-    RRegex::iterator cur(text,r);
-    RRegex::iterator end;
+    RRegex::LazyIterator cur(text,r);
+    RRegex::LazyIterator end;
     for(;cur!=end;cur++) std::cout<<"match: "<<*cur<<std::endl;
     free(text);
     free(pattern);
