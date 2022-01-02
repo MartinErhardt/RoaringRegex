@@ -1,4 +1,5 @@
-fast_regex
+test_regex
+*.a
 *.o
 CRoaring
 gmon.out

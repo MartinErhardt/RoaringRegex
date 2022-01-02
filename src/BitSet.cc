@@ -36,7 +36,7 @@ BitSet<words_n>& BitSet<words_n>::operator&=(BitSet<words_n> other){
 template<int words_n>
 uint32_t BitSet<words_n>::cardinality() const{
     uint64_t ret_val=0;
-    for(size_t i=0;i<words_n;i++) ret_val+=_popcnt64(words[i]);
+    for(size_t i=0;i<words_n;i++) ret_val+=__builtin_popcountll(words[i]); //__builtin_popcountll seems to be more widely supported (on gcc) than _popcnt64
     return ret_val;
 }
 template<int words_n>
