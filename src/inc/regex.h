@@ -7,6 +7,7 @@
 #include "../../CRoaring/roaring.hh"
 #include<iostream>
 #include"BitSet.h"
+#include <stack>
 namespace Regex{
     enum operation{CONCATENATION,BRACKETS,OR};
     class PseudoNFA{
@@ -26,7 +27,7 @@ namespace Regex{
         PseudoNFA& operator*=(PseudoNFA&& other){return *this*=other;};             //Concatenation
         PseudoNFA& operator|=(PseudoNFA& other){size+=other.size;return *this;};    //Union
         PseudoNFA& operator*=(PseudoNFA& other){size+=other.size;return *this;};    //Concatenation
-        PseudoNFA& operator* (unsigned int n){return *this;};                       //Kleene operator
+        PseudoNFA& operator*(unsigned int n){return *this;};                       //Kleene operator
     };
     class Executable{
         void* memory_pool=nullptr;
@@ -163,13 +164,28 @@ namespace Regex{
     public:
         std::unique_ptr<Executable> exec;
         RRegex(const char* p);
-        class LazyIterator{
+        class AbstractIterator{
+        protected:
             char* cur_s     = nullptr;
             char* limit     = nullptr;
             char* begin_s   = nullptr;
             size_t cur;
             std::vector<Match> matches;
-            std::unique_ptr<Executable> exe=nullptr;
+            Executable* exe=nullptr;
+            char* operator<<(char* s);
+            char* operator>>(char* s);
+        public:
+            AbstractIterator(){}
+            //virtual void operator++()               =0;
+            //virtual void operator++(int)            =0;
+            //virtual std::string operator*();
+            bool operator!=(RRegex::AbstractIterator& i2){
+                return matches[cur].end!=i2.matches[i2.cur].end;
+            };
+            //~AbstractIterator(){}
+        };
+        class LazyIterator:public AbstractIterator{
+            std::unique_ptr<Executable> exe_owning=nullptr;
         public:
             LazyIterator(){
                 cur=0;
@@ -179,27 +195,68 @@ namespace Regex{
                 limit=nullptr;
                 matches.push_back(m);
             }
-            LazyIterator(char* s_begin, RRegex& r_arg): begin_s(s_begin),
-            exe(r_arg.exec->create_copy()) // TODO create copy of NFA
+            LazyIterator(char* s_begin, RRegex& r_arg): AbstractIterator(), exe_owning(r_arg.exec->create_copy()) // TODO create copy of NFA
             {
+                begin_s=s_begin;
                 cur=0;
                 Match m;
                 limit=begin_s;
                 m.end=begin_s;
                 m.start=nullptr;
                 matches.push_back(m);
+                exe=&*exe_owning;
                 *exe<<'\0';
                 (*this)++;
             };
-            bool operator!=(RRegex::LazyIterator& i2){
-                return matches[cur].end!=i2.matches[i2.cur].end;
-            };
-            char* operator<<(char* s);
-            char* operator>>(char* s);
             void operator++();
             void operator++(int){++(*this);};
             std::string operator*();
         };
-        
+        class GreedyIterator:public AbstractIterator{
+        public:
+            GreedyIterator(){
+                cur=0;
+                Match m;
+                m.end=nullptr;
+                m.start=nullptr;
+                limit=nullptr;
+                matches.push_back(m);
+            }
+            GreedyIterator(char* s_begin, RRegex& r_arg): AbstractIterator()  // TODO create copy of NFA
+            {
+                begin_s=s_begin;
+                Match m;
+                m.end=nullptr;
+                m.start=nullptr;
+                matches.push_back(m);
+                limit=begin_s;
+                exe=&*r_arg.exec;
+                *exe<<'\0';
+                cur_s=begin_s;
+                std::stack<char*> stack;
+                while((cur_s=*this<<cur_s)!=nullptr){
+                    stack.push(cur_s);
+                }
+                while(!stack.empty()){
+                    Match m;
+                    cur_s=m.end=stack.top();
+                    exe->reset();
+                    limit=begin_s;
+                    cur_s=m.start=((*this)>>cur_s);
+                    while(!stack.empty()&&cur_s<stack.top()) stack.pop();
+                    limit=stack.empty()?begin_s:stack.top();
+                    while(cur_s>limit){
+                        cur_s=*this>>cur_s;
+                        if(**exe&FLAG_INITIAL) m.start=cur_s;
+                    }
+                    matches.push_back(m);
+                }
+                cur=matches.size()-1;
+                exe->reset_all();
+            };
+            void operator++(){cur--;};
+            void operator++(int){++(*this);};
+            std::string operator*(){return matches[cur].str();}
+        };
     };
 }

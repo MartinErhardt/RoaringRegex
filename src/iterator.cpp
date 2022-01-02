@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 #include"regex.h"
 using namespace Regex;
-char* RRegex::LazyIterator::operator<<(char* s){
-    if(!*cur_s) return nullptr;
+char* RRegex::AbstractIterator::operator<<(char* s){
+    if(!(*cur_s)) return nullptr;
     while(!((*(*exe<<*(cur_s++)))&FLAG_ACCEPTING)&&*cur_s);// std::cout<<"welp: "<<(int)(ret&FLAG_ACCEPTING)<<std::endl;
     if(!(*cur_s)&&**exe&FLAG_ACCEPTING) return cur_s; //minus null character
     else if(!*cur_s){
@@ -13,7 +13,7 @@ char* RRegex::LazyIterator::operator<<(char* s){
         else return nullptr;
     }else return cur_s;
 };
-char* RRegex::LazyIterator::operator>>(char* s){
+char* RRegex::AbstractIterator::operator>>(char* s){
     while(!(*(*exe>>*(--cur_s))&FLAG_INITIAL)&&cur_s>limit);
     if(begin_s>=cur_s&&**exe&FLAG_INITIAL) return begin_s;
     else if(begin_s==cur_s){
