@@ -41,7 +41,7 @@ Currently implemented features include
  - Kleeene operators for repeating        *+?
 
 This project is still largely work in progress. Some of the current shortfalls:
- - No proper wchar support
+ - ASCII only
  - Messy headers
  - No doxygen
  - No tests
