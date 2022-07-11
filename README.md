@@ -1,5 +1,6 @@
 ![C++](https://github.com/MartinErhardt/RoaringRegex/actions/workflows/c-cpp.yml/badge.svg)
-[![][license img]][license]
+![License](https://img.shields.io/static/v1?label=License&message=MPL-2.0&color=blue)
+
 # RoaringRegex
 Regex Engine using SIMD and Roaring-Bitmaps
 
