@@ -3,13 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 #include"BitSet.h"
 #include"regex.h"
-using namespace roaring;
 using namespace Regex;
 
 namespace Regex{
 #define idx(state, c, fwd) ([&]{                                     \
-          if constexpr (fwd) return state+2*states_n*((size_t)c);    \
-          else return               state+states_n*(1+2*((size_t)c));\
+          if constexpr (fwd) return ((uint8_t) state)+2*states_n*((size_t)c);    \
+          else return               ((uint8_t)state)+states_n*(1+2*((size_t)c));\
         }())
 Roaring operator+(Roaring& set,int32_t rotate){
     Roaring ret;//TODO use fastunion
@@ -106,8 +105,7 @@ NFA<StateSet>::NFA(uint32_t cur_n,char c,uint32_t states_n_arg, void* states_arg
 }
 template<class StateSet>
 NFA<StateSet>::NFA(uint32_t cur_n,BitSet<2>& cs,uint32_t states_n_arg, void* states_arg):PseudoNFA(cur_n,'a',2,states_arg),Executable(states_n_arg), states((StateSet*)states_arg){
-    typename BitSet<2>::iterator i(cs);
-    while(++i>=0){
+    for(typename BitSet<2>::const_iterator i = cs.begin(); i < cs.end();++i){
         states[idx(cur_n,*i,true)].add(cur_n+1);
         states[idx(cur_n+1,*i,false)].add(cur_n);
     }
@@ -128,9 +126,11 @@ NFA<StateSet>& NFA<StateSet>::shift(char c){
         current_states[fwd] = Roaring::fastunion(current_states_cardinality,
                                             const_cast<const Roaring**>(select_for_fastunion));
     }else{
-        typename StateSet::iterator i(current_states[fwd]);
-        current_states[fwd]=StateSet();
-        while(++i>=0) current_states[fwd]|=states[idx(*i,c,fwd)];
+        StateSet new_current_states=StateSet();
+        for(typename StateSet::const_iterator i = current_states[fwd].begin(); 
+            i < current_states[fwd].end();++i)
+            new_current_states|=states[idx((uint8_t)*i,c,fwd)];
+        current_states[fwd] = new_current_states;
     }
     //current_states[fwd].printf();
     return *this;
@@ -161,13 +161,10 @@ void NFA<StateSet>::skip(uint32_t n,uint32_t k){
     uint32_t fixed=fwd?n:k;
     for(unsigned char c=0;c<0x80;c++){
         states[idx(fixed,c,fwd)] |=states[idx(to_skip,c,fwd)];
-        if constexpr(std::is_same<StateSet, Roaring>::value){
-            for(Roaring::const_iterator j =states[idx(to_skip,c,fwd)].begin();
-                                        j!=states[idx(to_skip,c,fwd)].end();j++)
-                states[idx(*j,c,!fwd)].add(fixed);
-        }else{
-            typename StateSet::iterator i(states[idx(to_skip,c,fwd)]);
-            while(++i>=0) states[idx(*i,c,!fwd)].add(fixed);
+        for(typename StateSet::const_iterator j =states[idx(to_skip,c,fwd)].begin();
+                                    j!=states[idx(to_skip,c,fwd)].end();++j){
+            //std::cout<< "j: "<< *j <<std::endl;
+            states[idx(*j,c,!fwd)].add(fixed);
         }
     }
 }
@@ -178,12 +175,8 @@ NFA<StateSet>& NFA<StateSet>::operator*=(NFA& other){
     //std::cout<<"################################# merge into NFA: "<<std::endl;
     //std::cout<<*this;
     this->PseudoNFA::operator*=(other);
-    if constexpr(std::is_same<StateSet, Roaring>::value){
-        for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++) skip<false>(*i,other.initial_state);
-    } else{
-        typename StateSet::iterator i(final_states);
-        while(++i>=0) skip<false>(*i,other.initial_state);
-    }
+    for(typename StateSet::const_iterator i = final_states.begin(); i != final_states.end(); ++i)
+        skip<false>(*i,other.initial_state);
     if(final_states.contains(initial_state)) skip<true>(initial_state,other.initial_state);
     if(final_states.contains(initial_state)&&other.final_states.contains(other.initial_state)){
         final_states=other.final_states;
@@ -206,12 +199,8 @@ NFA<StateSet>& NFA<StateSet>::operator|=(NFA& other){
 template<class StateSet>
 NFA<StateSet>& NFA<StateSet>::operator*(unsigned int n){
     if(!n) return *this;
-    if constexpr(std::is_same<StateSet, Roaring>::value){
-        for(Roaring::const_iterator i = final_states.begin(); i != final_states.end(); i++) skip<false>(*i,initial_state);
-    } else{
-        typename StateSet::iterator i(final_states);
-        while(++i>=0) skip<false>(*i,initial_state);
-    }
+    for(typename StateSet::const_iterator i = final_states.begin(); i != final_states.end(); ++i) 
+        skip<false>(*i,initial_state);
     final_states.add(initial_state);
     return *this;
 }

@@ -8,29 +8,38 @@
 
 template<int words_n>
 class BitSet{
-    alignas(words_n*8) uint64_t words[words_n]={0};
 public:
+    alignas(words_n*8) uint64_t words[words_n]={0};
+    //BitSet(BitSet<words_n>& other){for(size_t i=0;i<words_n;i++) words[i]=other.words[i];};
+    //BitSet(BitSet<words_n>&& other){for(size_t i=0;i<words_n;i++) words[i]=other.words[i];};
     BitSet(){};
     BitSet<words_n>& operator |=(BitSet<words_n> other);
     BitSet<words_n>& operator &=(BitSet<words_n> other);
     uint32_t cardinality() const;
-    class iterator{
-        alignas(words_n*8) uint64_t words[words_n]={0}; //TODO align whole memory_pool
-        uint8_t cur_b=0;
+    //template<int words_n>
+    class const_iterator{
+        const BitSet<words_n>& to_iterate;
+        int cur_b;
+        uint64_t  cur_w;
+        
+        //typedef typename BitSet<words_n>::const_iterator const_iter;
     public:
-        iterator(uint64_t* s);
-        iterator(BitSet<words_n> s);
-        void reinit(uint64_t* other_words);
-        bool operator!=(BitSet<words_n>::iterator i2);
-        int32_t operator++();
-        int32_t operator*();
+        const_iterator(const BitSet<words_n>& to_iterate, int cur_b): to_iterate(to_iterate), cur_b(cur_b){
+            if(cur_b==-1) cur_w = 0;
+            else cur_w = to_iterate.words[cur_b>>6];
+        };
+        bool operator<(const_iterator i2);
+        bool operator!=(const_iterator i2);
+        bool operator==(const_iterator i2);
+        typename BitSet<words_n>::const_iterator& operator++();
+        int operator*();
     };
     void add(uint32_t t);
     size_t and_cardinality(BitSet<words_n> new_s);
     bool contains(uint32_t t);
     void complement();
-    BitSet<words_n>::iterator begin();
-    BitSet<words_n>::iterator end();
+    typename BitSet<words_n>::const_iterator begin() const;
+    typename BitSet<words_n>::const_iterator end() const;
     BitSet<words_n> operator+(int32_t rotate);
     void printf() const ;
 };

@@ -55,36 +55,45 @@ void BitSet<words_n>::complement(){
     }
 }
 template<int words_n>
-BitSet<words_n>::iterator::iterator(BitSet<words_n> s){
-    for(size_t i=0;i<words_n;i++) words[i]=s.words[i];
+bool BitSet<words_n>::const_iterator::operator<(BitSet<words_n>::const_iterator i2){
+    //std::cout << "cur_b: " << (unsigned int) cur_b << ", i2.cur:b: " << (unsigned int) i2.cur_b << std::endl;
+    return (unsigned int) cur_b < (unsigned int) i2.cur_b;
 }
 template<int words_n>
-BitSet<words_n>::iterator::iterator(uint64_t* w){
-    for(size_t i=0;i<words_n;i++) words[i]=w[i];
+bool BitSet<words_n>::const_iterator::operator==(BitSet<words_n>::const_iterator i2){
+    return cur_b==i2.cur_b;
 }
 template<int words_n>
-void BitSet<words_n>::iterator::reinit(uint64_t* other_words){
-    for(size_t i=0;i<words_n;i++) words[i]=other_words[i];
+bool BitSet<words_n>::const_iterator::operator!=(BitSet<words_n>::const_iterator i2){
+    return !(*this==i2);
+}
+
+template<int words_n> 
+typename BitSet<words_n>::const_iterator& BitSet<words_n>::const_iterator::operator++(){
+    const uint64_t* words_ptr = &to_iterate.words[0];
+    const uint64_t* cur_ptr = &words_ptr[(cur_b==-1)?words_n-1:cur_b>>6];
+    while(cur_ptr<words_ptr+words_n-1&&!cur_w) cur_w=*(++cur_ptr);
+    if(cur_ptr==words_ptr+words_n-1&&!cur_w) cur_b = -1;
+    else{
+        uint64_t highest_set_bit = (cur_w) & -(cur_w);
+        cur_b = (cur_ptr-words_ptr)*sizeof(uint64_t)*8+__builtin_ctzl(cur_w);
+        cur_w^=highest_set_bit;
+    }
+    return *this;
 }
 template<int words_n>
-bool BitSet<words_n>::iterator::operator!=(BitSet<words_n>::iterator i2){
-    bool ret =false;
-    for(int i=0;i<words_n;i++) ret=ret||(words[i]!=i2.words[i]);
-    return ret;
+int BitSet<words_n>::const_iterator::operator*(){
+    return cur_b;
 }
 template<int words_n>
-int32_t BitSet<words_n>::iterator::operator++(){
-    uint64_t* cur_w=&words[cur_b>>6];
-    while(cur_w<&words[0]+words_n-1&&!*cur_w) cur_w++;
-    if(cur_w==&words[0]+words_n-1&&!*cur_w) return -1;
-    uint64_t highest_set_bit = (*cur_w) & -(*cur_w);
-    cur_b = (cur_w-&words[0])*sizeof(uint64_t)*8+((uint8_t) __builtin_ctzl(*cur_w));
-    (*cur_w)^=highest_set_bit;
-    return (int32_t) cur_b;
+typename BitSet<words_n>::const_iterator BitSet<words_n>::begin() const{
+    BitSet<words_n>::const_iterator ret_val = BitSet<words_n>::const_iterator(*this, 0);
+    ++ret_val;
+    return ret_val;
 }
 template<int words_n>
-int32_t BitSet<words_n>::iterator::operator*(){
-    return (int32_t) cur_b;
+typename BitSet<words_n>::const_iterator BitSet<words_n>::end() const{
+    return BitSet<words_n>::const_iterator(*this, -1);
 }
 template<int words_n>
 void BitSet<words_n>::add(uint32_t t){
@@ -103,15 +112,6 @@ bool BitSet<words_n>::contains(uint32_t t){
     uint64_t t64=(uint64_t) t;
     int w_n=t>>6;
     return (words[w_n]&(1ULL<<(t64&0x3f)))>>(t64&0x3f);
-}
-template<int words_n>
-typename BitSet<words_n>::iterator BitSet<words_n>::begin(){
-    return BitSet<words_n>::iterator(&words[0]);
-}
-template<int words_n>
-typename BitSet<words_n>::iterator BitSet<words_n>::end(){
-    uint64_t zero_words[words_n]={0};
-    return BitSet<words_n>::iterator(&zero_words[0]);
 }
 //https://stackoverflow.com/questions/17610696/shift-a-m128i-of-n-bits
 #define SHL128(v, n)                        \
@@ -180,14 +180,14 @@ BitSet<words_n> BitSet<words_n>::operator+(int32_t rotate){
 }
 template<int words_n>
 void BitSet<words_n>::printf() const {
-    BitSet<words_n>::iterator i(*this);
     std::cout<<"{";
-    while(++i>=0) std::cout<<*i<<",";
+    for(typename BitSet<words_n>::const_iterator i = begin(); i< end(); ++i)
+        std::cout<<*i<<",";
     std::cout<<"\b}";
 }
-template class BitSet<1>::iterator;
-template class BitSet<2>::iterator;
-template class BitSet<4>::iterator;
+//template class BitSet<1>::iterator;
+//template class BitSet<2>::iterator;
+//template class BitSet<4>::iterator;
 template class BitSet<1>;
 template class BitSet<2>;
 template class BitSet<4>;

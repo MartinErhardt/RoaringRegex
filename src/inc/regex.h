@@ -4,7 +4,9 @@
 #pragma once
 #include<vector>
 #include<memory>
+
 #include "../../CRoaring/roaring.hh"
+using namespace roaring;
 #include<iostream>
 #include"BitSet.h"
 #include <stack>

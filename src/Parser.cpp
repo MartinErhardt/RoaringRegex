@@ -5,7 +5,7 @@
 #include<stdbool.h>
 #include<string.h>
 //#include "../../CRoaring/roaring.hh"
-#include "../../CRoaring/roaring.c"
+#include "../CRoaring/roaring.c"
 #include"regex.h"
 #include<stack>
 #include<iostream>
