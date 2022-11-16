@@ -10,8 +10,6 @@ template<int words_n>
 class BitSet{
 public:
     alignas(words_n*8) uint64_t words[words_n]={0};
-    //BitSet(BitSet<words_n>& other){for(size_t i=0;i<words_n;i++) words[i]=other.words[i];};
-    //BitSet(BitSet<words_n>&& other){for(size_t i=0;i<words_n;i++) words[i]=other.words[i];};
     BitSet(){};
     BitSet<words_n>& operator |=(BitSet<words_n> other);
     BitSet<words_n>& operator &=(BitSet<words_n> other);
@@ -20,9 +18,7 @@ public:
     class const_iterator{
         const BitSet<words_n>& to_iterate;
         int cur_b;
-        uint64_t  cur_w;
-        
-        //typedef typename BitSet<words_n>::const_iterator const_iter;
+        uint64_t cur_w;
     public:
         const_iterator(const BitSet<words_n>& to_iterate, int cur_b): to_iterate(to_iterate), cur_b(cur_b){
             if(cur_b==-1) cur_w = 0;

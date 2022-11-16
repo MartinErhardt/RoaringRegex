@@ -18,17 +18,17 @@ int main(){
             return -1;
     text[strlen(text)-1]='\0';
     pattern[strlen(pattern)-1]='\0';
-    auto start_time = std::chrono::high_resolution_clock::now();
+    //auto start_time = std::chrono::high_resolution_clock::now();
     RRegex r(pattern);
-    RRegex::GreedyIterator cur(text,r);
-    RRegex::GreedyIterator end;
-    for(;cur!=end;cur++) *cur;
-    auto end_time = std::chrono::high_resolution_clock::now();
-    std::cout<<"################################# final NFA: "<<std::endl;
+    
     r.exec->print();
-    RRegex::GreedyIterator cur2(text,r);
-    for(;cur2!=end;cur2++) std::cout<<"match: "<<*cur2<<std::endl;
+    
+    auto start_time = std::chrono::high_resolution_clock::now();
+    bool is_match = r.is_match(text);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::cout << "is match? " << is_match << std::endl;
     std::cout<<"time: " <<std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms\n";
+    
     free(text);
     free(pattern);
     return 0;
