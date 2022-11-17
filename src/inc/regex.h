@@ -12,6 +12,43 @@ using namespace roaring;
 #include <stack>
 namespace Regex{
     enum operation{CONCATENATION,BRACKETS,OR};
+    template<class StateSet>
+    class MemoryPool{
+    public:
+        std::shared_ptr<void> memory_pool;
+        StateSet* states;
+        uint32_t states_n = 0;
+        size_t memory_pool_size;
+        //MemoryPool() = delete;
+    };
+    template <>
+    class MemoryPool<Roaring> {
+    public:
+        uint32_t*  gather_for_fastunion;               // owned by memory_pool
+        Roaring**  select_for_fastunion;               // owned by memory_pool
+        MemoryPool(unsigned int states_n), states_n(states_n){
+            memory_pool_size=sizeof(Roaring)*0x100*states_n+sizeof(Roaring*)*states_n+sizeof(uint32_t*)*states_n;
+            memory_pool=std::shard_ptr<void>(malloc(memory_pool_size), [](void *p) {
+                for(Roaring* cur_state=states;cur_state<states+states_n*0x100;cur_state++) cur_state->~Roaring();
+                free(p); }
+            );
+            memset(static_cast<char*>(memory_pool),0,memory_pool_size); // conforms to strict-aliasing; initializes all Roaring bitmaps
+            states=reinterpret_cast<Roaring*>(memory_pool);
+            gather_for_fastunion=reinterpret_cast<uint32_t*>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n*0x100);
+            select_for_fastunion=reinterpret_cast<Roaring**>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n*0x100+sizeof(Roaring*)*states_n);
+        }
+    };    
+    template <unsigned int k>
+    class MemoryPool<BitSet<k>> {
+    public:
+        MemoryPool(unsigned int states_n), states_n(states_n){
+                memory_pool_size=sizeof(BitSet<k>)*0x100*states_n;
+                memory_pool=std::shared_ptr<void>(malloc(memory_pool_size));
+                memset(static_cast<char*>(memory_pool),0,memory_pool_size);
+                BitSet<k>* states=reinterpret_cast<BitSet<k>*>(memory_pool);
+        }
+    };
+    class NoStateSet{};
     class PseudoNFA{
     public:
         uint32_t size;
@@ -19,10 +56,10 @@ namespace Regex{
         PseudoNFA(){};
         PseudoNFA(const PseudoNFA& to_copy){size=to_copy.size;initial_state=to_copy.initial_state;}
         PseudoNFA(PseudoNFA&& to_move){size=to_move.size; initial_state=to_move.initial_state; to_move.size=0;}
-        PseudoNFA(uint32_t cur_n,uint32_t states_n):size(states_n),initial_state(cur_n){};
-        PseudoNFA(uint32_t cur_n,uint32_t states_n,void* tr_table){size=1;initial_state=cur_n;};         //create empty NFA
-        PseudoNFA(uint32_t cur_n,char c,uint32_t states_n,void* tr_table){size=2;initial_state=cur_n;};  //create NFA accepting just c
-        PseudoNFA(uint32_t cur_n,BitSet<2>& cs,uint32_t states_n,void* states){size=2;initial_state=cur_n;};
+        //PseudoNFA(uint32_t cur_n,MemoryPool<PseudoSet> mem_pool):size(mem_pool.states_n),initial_state(cur_n){};
+        PseudoNFA(uint32_t cur_n,MemoryPool<PseudoSet> mem_pool){size=1;initial_state=cur_n;};         //create empty NFA
+        PseudoNFA(uint32_t cur_n,char c,MemoryPool<PseudoSet> mem_pool){size=2;initial_state=cur_n;};  //create NFA accepting just c
+        PseudoNFA(uint32_t cur_n,BitSet<2>& cs,MemoryPool<PseudoSet> mem_pool){size=2;initial_state=cur_n;};
         PseudoNFA& operator=(PseudoNFA& other){size=other.size;initial_state=other.initial_state; return *this;}
         PseudoNFA& operator=(PseudoNFA&& other){size=other.size;other.size=0; initial_state=other.initial_state; return *this;}
         PseudoNFA& operator|=(PseudoNFA&& other){return *this|=other;};             //Union
@@ -31,85 +68,19 @@ namespace Regex{
         PseudoNFA& operator*=(PseudoNFA& other){size+=other.size;return *this;};    //Concatenation
         PseudoNFA& operator*(unsigned int n){return *this;};                       //Kleene operator
     };
-    /*
-    template<class StateSet>
-    class MemoryPool{
-    public:
-        std::shared_ptr<void> mem_pool;
-        size_t memory_pool_size;
-    }
-    template <>
-    class MemoryPool<Roaring> {
-    public:
-        uint32_t*  gather_for_fastunion=nullptr;                // owned by memory_pool
-        Roaring**  select_for_fastunion=nullptr;               // owned by memory_pool
-    };*/
 
     class Executable{
-        void* memory_pool=nullptr;
-        size_t memory_pool_size=0;
-        bool moved_from = false;
         #define FLAG_ACCEPTING   (1<<0)
         #define FLAG_INITIAL     (1<<1)
     public: 
-        size_t states_n=0;
         virtual uint8_t operator*()            = 0;
-        virtual Executable& operator<<(char c) = 0;            //process forward
-        virtual Executable& operator>>(char c) = 0;            //process in reverse order
+        virtual Executable& operator<<(char c) = 0;//process forward
+        virtual Executable& operator>>(char c) = 0;//process in reverse order
         virtual void reset()                   = 0;
         virtual void reset_all()               = 0;
         virtual Executable* create_copy()      = 0;
-    protected:
-        uint32_t*  gather_for_fastunion=nullptr;                // owned by memory_pool
-        Roaring**   select_for_fastunion=nullptr;               // owned by memory_pool
     public: //TODO make private
-            Executable(){}
-            Executable(size_t states_n_arg){states_n=states_n_arg;};
             virtual void print() = 0;
-            void init(void* memory_pool_arg, size_t memory_pool_size_arg, size_t states_n_arg){
-                states_n=states_n_arg;
-                if(states_n>256){
-                    gather_for_fastunion=reinterpret_cast<uint32_t*>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n*0x100);
-                    select_for_fastunion=reinterpret_cast<Roaring**>(static_cast<char*>(memory_pool_arg)+sizeof(Roaring)*states_n*0x100+sizeof(Roaring*)*states_n);
-                }
-                memory_pool=memory_pool_arg;
-                memory_pool_size=memory_pool_size_arg;
-            };
-            Executable& operator=(Executable& other)
-            /*{
-                nfa=other.nfa;
-                memory_pool=malloc(other.memory_pool_size);
-                memcpy(memory_pool,other.memory_pool,memory_pool_size);
-                gather_for_fastunion=other.gather_for_fastunion;
-                select_for_fastunion=other.select_for_fastunion;
-                return *this;
-            }*/
-            =delete;
-            Executable& operator=(Executable&& other){
-                memory_pool=other.memory_pool;
-                memory_pool_size=other.memory_pool_size;
-                states_n=other.states_n;
-                gather_for_fastunion=other.gather_for_fastunion;
-                select_for_fastunion=other.select_for_fastunion;
-                other.memory_pool=nullptr;
-                other.gather_for_fastunion=nullptr;
-                other.select_for_fastunion=nullptr;
-                other.moved_from=true;
-                return *this;
-            };
-            Executable(Executable& exe)
-            =delete;
-            Executable(Executable&& exe){(*this)=std::move(exe);};
-            virtual ~Executable(){
-                if(!moved_from&&memory_pool){
-                    if(states_n>256){
-                        Roaring* states=(Roaring*)memory_pool;
-                        Roaring* cur_state=states;
-                        for(;cur_state<states+states_n*0x100;cur_state++) cur_state->~Roaring();
-                    }
-                    free(memory_pool);
-                }
-            }
     };
     template<class StateSet>
     class NFA;
@@ -122,12 +93,13 @@ namespace Regex{
         StateSet*   states;                                      //owned first by Parser then Executable
         StateSet    current_states[2];
         StateSet    final_states;
-        NFA(){};
-        NFA(const NFA& to_copy);
-        NFA(NFA&& to_move);
-        NFA(uint32_t cur_n,uint32_t states_n,void* states);             //create empty NFA
-        NFA(uint32_t cur_n,char c,uint32_t states_n,void* states);      //create NFA accepting just c
-        NFA(uint32_t cur_n,BitSet<2>& cs,uint32_t states_n,void* states);//create NFA accepting all characters in cs
+        MemoryPool<StateSet> memory_pool;
+        //NFA() = delete;
+        //NFA(const NFA& to_copy);
+        //NFA(NFA&& to_move);
+        NFA(uint32_t cur_n,MemoryPool<PseudoSet> mem_pool);              //create empty NFA
+        NFA(uint32_t cur_n,char c,MemoryPool<PseudoSet> mem_pool);       //create NFA accepting just c
+        NFA(uint32_t cur_n,BitSet<2>& cs,MemoryPool<PseudoSet> mem_pool);//create NFA accepting all characters in cs
         void reset(){
             current_states[0]=final_states;
         };
