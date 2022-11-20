@@ -10,14 +10,14 @@ bin_dirs:
 	mkdir -p bin
 	mkdir -p bin/src
 bin/%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c -o $@ $^
+	LC_MESSAGES=en $(CXX) $(CXXFLAGS) -c -o $@ $^
 bin/%.o: %.cc
-	$(CXX) $(CXXFLAGS) -c -o $@ $^
+	LC_MESSAGES=en $(CXX) $(CXXFLAGS) -c -o $@ $^
 librregex.a:  $(OBJS)
 	$(AR) rcsT  $@ $^
 test_regex: librregex.a
-	$(CXX) $(CXXFLAGS) -I src/inc -c -o ./bin/main.o ./src/test/main.cpp
-	$(CXX) -o $@ -flto ./bin/main.o librregex.a
+	LC_MESSAGES=en $(CXX) $(CXXFLAGS) -I src/inc -c -o ./bin/main.o ./src/test/main.cpp
+	LC_MESSAGES=en $(CXX) -o $@ -flto ./bin/main.o librregex.a
 CRoaring:
 	git clone https://github.com/RoaringBitmap/CRoaring.git
 	cd CRoaring && ./amalgamation.sh

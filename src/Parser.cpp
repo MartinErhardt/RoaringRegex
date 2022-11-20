@@ -14,7 +14,7 @@ using namespace Regex;
 using namespace roaring;
 
 template<class StateSet>
-NFA<StateSet> RRegex::bracket_expression(const char* start,const char** cp2,uint32_t new_initial,int ps,const char *p,void* states){
+NFA<StateSet> RRegex::bracket_expression(const char* start,const char** cp2,uint32_t new_initial,int ps,const char *p,MemoryPool<StateSet>& mem_pool){
     bool escaped=false;
     bool complement=*(++*cp2)=='^';
     BitSet<2> charset;
@@ -35,7 +35,7 @@ NFA<StateSet> RRegex::bracket_expression(const char* start,const char** cp2,uint
     }
     if(*cp2-start==ps) throw std::runtime_error("invalid expression!");
     if(complement) charset.complement();
-    return NFA<StateSet>(new_initial,charset,states_n,states);
+    return NFA<StateSet>(new_initial,charset,mem_pool);
 }
 template<class StateSet>
 NFA<StateSet> RRegex::build_NFA(const char* p, unsigned int states_n){
@@ -91,7 +91,7 @@ NFA<StateSet> RRegex::build_NFA(const char* p, unsigned int states_n){
         }
         switch((*cp)*(!escaped)) {
             case '[':
-                nfas.push(std::move(RRegex::bracket_expression<NFA<StateSet>>(cp,&cp,next_initial(nfas),ps-(cp-p),p,states)));
+                nfas.push(std::move(RRegex::bracket_expression<StateSet>(cp,&cp,next_initial(nfas),ps-(cp-p),p,new_mempool)));
                 ops.push(CONCATENATION);
                 break;
             case '(':
@@ -106,7 +106,7 @@ NFA<StateSet> RRegex::build_NFA(const char* p, unsigned int states_n){
             case '.':{
                 BitSet<2> charset;
                 charset.complement();
-                nfas.push(std::move(NFA<StateSet>(next_initial(nfas),charset,states_n,states)));
+                nfas.push(std::move(NFA<StateSet>(next_initial(nfas),charset,new_mempool)));
                 ops.push(CONCATENATION);
                 break;
             }
@@ -118,7 +118,7 @@ NFA<StateSet> RRegex::build_NFA(const char* p, unsigned int states_n){
                 nfas.top()*1;
                 break;
             case '?':
-                nfas.top()|=NFA<StateSet>(next_initial(nfas),states_n,states);
+                nfas.top()|=NFA<StateSet>(next_initial(nfas),new_mempool);
                 break;
             case '{':{
                 char* cn1;
@@ -132,7 +132,7 @@ NFA<StateSet> RRegex::build_NFA(const char* p, unsigned int states_n){
                         nfas.top()*1;
                     } else if(n>m){
                         repeat();
-                        nfas.top()|=NFA<StateSet>(next_initial(nfas),states_n,states);
+                        nfas.top()|=NFA<StateSet>(next_initial(nfas),new_mempool);
                         for(int k=m+1;k<n;k++) repeat();
                     }
                     cp=cn2;
@@ -141,11 +141,11 @@ NFA<StateSet> RRegex::build_NFA(const char* p, unsigned int states_n){
             }
             case '^':
             case '$':
-                nfas.push(NFA<StateSet>(next_initial(nfas),'\0',states_n,states));
+                nfas.push(NFA<StateSet>(next_initial(nfas),'\0',new_mempool));
                 ops.push(CONCATENATION); //states
                 break;
             default:
-                nfas.push(NFA<StateSet>(next_initial(nfas),*cp,states_n,states));
+                nfas.push(NFA<StateSet>(next_initial(nfas),*cp,new_mempool));
                 ops.push(CONCATENATION);
                 break;
         }
@@ -159,12 +159,12 @@ NFA<StateSet> RRegex::build_NFA(const char* p, unsigned int states_n){
 }
 
 RRegex::RRegex(const char* p){
-    states_n=build_NFA<NoStateSet>(p,nullptr,0).size;
+    states_n=build_NFA<NoStateSet>(p,0).size;
     if(states_n>256)        exec=std::make_unique<NFA<Roaring>>(build_NFA<Roaring>(p,states_n));
     else if(states_n>128)   exec=std::make_unique<NFA<BitSet<4>>>(build_NFA<BitSet<4>>(p,states_n));
     else if(states_n>64)    exec=std::make_unique<NFA<BitSet<2>>>(build_NFA<BitSet<2>>(p,states_n));
     else                    exec=std::make_unique<NFA<BitSet<1>>>(build_NFA<BitSet<1>>(p,states_n));
-    exec->init(memory_pool, memory_pool_size, states_n);
+    //exec->init(memory_pool, memory_pool_size, states_n);
 }
 //template<unsigned int k>
 //template<BitSet<k>>
