@@ -71,18 +71,22 @@ NFA<StateSet>::NFA(uint32_t cur_n,BitSet<2>& cs,MemoryPool<StateSet>& mem_pool):
 }
 template<class StateSet>
 template<bool fwd>
-NFA<StateSet>& NFA<StateSet>::shift(char c){
+NFA<StateSet>& NFA<StateSet>::Processor::shift(char c){
+    MemoryPool<StateSet> memory_pool=to_exec.memory_pool;
+    StateSet* state_table=to_exec.memory_pool.states;
     if constexpr(std::is_same<StateSet, Roaring>::value){
-        size_t current_states_cardinality=current_states[fwd].cardinality();
-        current_states[fwd].toUint32Array(memory_pool.gather_for_fastunion);
+        size_t current_states_cardinality=current_states.cardinality();
+        Roaring** select_for_fastunion=to_exec.memory_pool.select_for_fastunion;
+        uint32_t* gather_for_fastunion=to_exec.memory_pool.gather_for_fastunion;
+        current_states.toUint32Array(memory_pool.gather_for_fastunion);
         for(uint32_t i=0;i<current_states_cardinality;i++)
-            memory_pool.select_for_fastunion[i]=&memory_pool.states[idx(memory_pool.gather_for_fastunion[i],c,fwd)];
-        current_states[fwd] = Roaring::fastunion(current_states_cardinality,
-                                            const_cast<const Roaring**>(memory_pool.select_for_fastunion));
+            select_for_fastunion[i]=&state_table[idx(gather_for_fastunion[i],c,fwd)];
+        current_states = Roaring::fastunion(current_states_cardinality,
+                                            const_cast<const Roaring**>(select_for_fastunion));
     }else{
         StateSet new_current_states=StateSet();
-        for(typename StateSet::const_iterator i = current_states[fwd].begin(); 
-            i < current_states[fwd].end();++i)
+        for(typename StateSet::const_iterator i = current_states.begin(); 
+            i < current_states.end();++i)
             /*{
             std::cout<< "current_states[fwd]: ";
             std::cout<< "unite from i: "<< *i << ": " << std::endl;
@@ -90,31 +94,16 @@ NFA<StateSet>& NFA<StateSet>::shift(char c){
                 k < memory_pool.states[idx((uint8_t)*i,c,fwd)].end();++k)
                     std::cout<< *k << " ";
             std::cout<< std::endl;*/
-            new_current_states|=memory_pool.states[idx((uint8_t)*i,c,fwd)];
+            new_current_states |= state_table[idx((uint8_t)*i,c,fwd)];
         //}
-        current_states[fwd] = new_current_states;
+        current_states = new_current_states;
     }
-    //current_states[fwd].printf();
-    return *this;
+    return to_exec;
 }
 template<class StateSet>
-NFA<StateSet>& NFA<StateSet>::operator<<(char c){
-    //current_states[1].add(initial_state);
-    //std::cout<<"pre<< "<<c; current_states[1].printf();std::cout<<std::endl;
-    shift<true>(c);
-    //std::cout<<"post<<"; current_states[1].printf();std::cout<<std::endl;
-    return *this;
-}
-template<class StateSet>
-NFA<StateSet>& NFA<StateSet>::operator>>(char c){
-    //std::cout<<"pre >>"<<c; current_states[0].printf();std::cout<<std::endl;
-    shift<false>(c);
-    //std::cout<<"post>>"; current_states[0].printf();std::cout<<std::endl;
-    return *this;
-}
-template<class StateSet>
-uint8_t NFA<StateSet>::operator*(){
-    return (current_states[0].contains(initial_state)<<1)|(current_states[1].and_cardinality(final_states)>0);
+uint8_t NFA<StateSet>::Processor::operator*(){
+    return (current_states.contains(to_exec.initial_state)<<1)
+          |(current_states.and_cardinality(to_exec.final_states)>0);
 };
 template<class StateSet>
 template<bool fwd>
@@ -122,8 +111,8 @@ void NFA<StateSet>::skip(uint32_t n,uint32_t k){
     uint32_t to_skip=fwd?k:n;
     uint32_t fixed=fwd?n:k;
     for(unsigned char c=0;c<0x80;c++){
-        memory_pool.states[idx(fixed,c,fwd)] |=memory_pool.states[idx(to_skip,c,fwd)];
-        for(typename StateSet::const_iterator j =memory_pool.states[idx(to_skip,c,fwd)].begin();
+        memory_pool.states[idx(fixed,c,fwd)] |= memory_pool.states[idx(to_skip,c,fwd)];
+        for(typename StateSet::const_iterator j = memory_pool.states[idx(to_skip,c,fwd)].begin();
                                     j!=memory_pool.states[idx(to_skip,c,fwd)].end();++j){
             //std::cout<< "j: "<< *j <<std::endl;
             memory_pool.states[idx(*j,c,!fwd)].add(fixed);

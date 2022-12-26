@@ -9,7 +9,8 @@
 using namespace roaring;
 #include<iostream>
 #include"BitSet.h"
-#include <stack>
+#include<stack>
+#include<optional>
 namespace Regex{
     enum operation{CONCATENATION,BRACKETS,OR};
     template<class StateSet>
@@ -91,31 +92,88 @@ namespace Regex{
         PseudoNFA& operator*=(PseudoNFA&& other){return *this*=other;};             //Concatenation
         PseudoNFA& operator|=(PseudoNFA& other){size+=other.size;return *this;};    //Union
         PseudoNFA& operator*=(PseudoNFA& other){size+=other.size;return *this;};    //Concatenation
-        PseudoNFA& operator*(unsigned int n){return *this;};                       //Kleene operator
-    };
-
-    class Executable{
-        #define FLAG_ACCEPTING   (1<<0)
-        #define FLAG_INITIAL     (1<<1)
-    public: 
-        virtual uint8_t operator*()            = 0;
-        virtual Executable& operator<<(char c) = 0;//process forward
-        virtual Executable& operator>>(char c) = 0;//process in reverse order
-        virtual void reset()                   = 0;
-        virtual void reset_all()               = 0;
-    public: //TODO make private
-            virtual void print() = 0;
+        PseudoNFA& operator*(unsigned int n){return *this;};                        //Kleene operator
     };
     template<class StateSet>
     class NFA;
     std::ostream& operator<<(std::ostream& out, NFA<Roaring> const& nfa);
-    template<class StateSet>
-    class NFA: public PseudoNFA,public Executable{
-        template<bool fwd> void skip(uint32_t n,uint32_t k);
-        template<bool fwd> NFA& shift(char c);
+    class Match{
     public:
+        char* start;
+        char* end;
+        std::string str(){return std::string(start,end-start);}
+    };
+    class RegexIterator{
+        public: 
+        virtual RegexIterator& operator++(int) = 0;//process forward
+        virtual RegexIterator* create_copy() = 0;
+        virtual std::optional<Match> operator*() = 0;
+        virtual void print() = 0;
+    };
+    class IteratorWrapper : public RegexIterator{
+        std::unique_ptr<RegexIterator> concrete;
+    public: 
+        IteratorWrapper(RegexIterator* ptr): concrete(std::unique_ptr<RegexIterator>(ptr)){};
+        IteratorWrapper(IteratorWrapper& to_copy): concrete(std::unique_ptr<RegexIterator>(to_copy.create_copy())){};
+        IteratorWrapper& operator++(int){(*concrete)++; return *this;};
+        std::optional<Match> operator*(){return **concrete;};
+        void print(){concrete->print();}
+        RegexIterator* create_copy(){return concrete->create_copy();};
+    };
+    class IterFactoryBase{
+        public: //TODO make private
+            virtual IteratorWrapper get_acceptance_iter(char* c) = 0;
+    };
+    template<class StateSet>
+    class NFA: public PseudoNFA {
+        class Processor{
+            #define FLAG_ACCEPTING   (1<<0)
+            #define FLAG_INITIAL     (1<<1)
+            StateSet    current_states;
+            NFA<StateSet>& to_exec;
+        public:
+            Processor(NFA<StateSet>& nfa): to_exec(nfa){
+                if constexpr(std::is_same<StateSet, Roaring>::value){
+                    current_states=std::move(Roaring::bitmapOf(1,to_exec.initial_state));
+                }else{
+                    StateSet s;
+                    s.add(to_exec.initial_state);
+                    current_states=s;
+                }
+            };
+            template<bool fwd> NFA& shift(char c);
+            NFA<StateSet>& operator>>(char c){return shift<true>(c);};
+            NFA<StateSet>& operator<<(char c){return shift<true>(c);};
+            uint8_t operator*();
+            void print(){to_exec.print();}
+        };
+        class AcceptanceIterator: public RegexIterator{
+            Processor proc;
+            char* current_char;
+            char* initial;
+        public:
+            AcceptanceIterator(char* to_process, NFA& nfa) : proc(nfa), current_char(to_process), initial(to_process) {};
+            RegexIterator& operator++(int){
+                while(*current_char) proc<<*(current_char++);
+                return *this;
+            };
+            std::optional<Match> operator*(){
+                return *proc&FLAG_ACCEPTING ? std::optional(Match{initial,current_char}) : std::nullopt;
+            };
+            RegexIterator* create_copy(){return new AcceptanceIterator(*this);}
+            void print() {proc.print();}
+        };
+        template<bool fwd> void skip(uint32_t n,uint32_t k);
+    public:
+        class IterFactory: public IterFactoryBase{
+            NFA<StateSet> compiled_regex;
+        public: //TODO make private
+            IterFactory(NFA&& get_nfa):compiled_regex(get_nfa){};
+            IteratorWrapper get_acceptance_iter(char* c){
+                return IteratorWrapper(new AcceptanceIterator(c,compiled_regex));
+            };
+        };
         StateSet*   states;                                      //owned first by Parser then Executable
-        StateSet    current_states[2];
         StateSet    final_states;
         MemoryPool<StateSet> memory_pool;
         
@@ -125,19 +183,6 @@ namespace Regex{
         NFA(uint32_t cur_n,MemoryPool<StateSet>& mem_pool);              //create empty NFA
         NFA(uint32_t cur_n,char c,MemoryPool<StateSet>& mem_pool);       //create NFA accepting just c
         NFA(uint32_t cur_n,BitSet<2>& cs,MemoryPool<StateSet>& mem_pool);//create NFA accepting all characters in cs
-        void reset(){
-            current_states[0]=final_states;
-        };
-        void reset_all(){
-            if constexpr(std::is_same<StateSet, Roaring>::value){
-                current_states[1]=std::move(Roaring::bitmapOf(1,initial_state));
-            }else{
-                StateSet s;
-                s.add(initial_state);
-                current_states[1]=s;
-            }
-            current_states[0]=final_states;
-        };
         NFA<StateSet>& operator=(NFA<StateSet>& other) = default;
         NFA<StateSet>& operator=(NFA<StateSet>&& other) = default;
         NFA& operator|=(NFA&& other){return *this|=other;};     //Union
@@ -145,9 +190,6 @@ namespace Regex{
         NFA& operator|=(NFA& other);                            //Union
         NFA& operator*=(NFA& other);                            //Concatenation
         NFA& operator* (unsigned int n);                        //Kleene operator
-        uint8_t operator*();
-        NFA& operator>>(char c);
-        NFA& operator<<(char c);
         void print();
     };
     //NFA<NoStateSet> operator+(NFA<NoStateSet>& input,int rotate);
@@ -167,30 +209,21 @@ namespace Regex{
     std::ostream& operator<<(std::ostream& out, PseudoNFA const& nfa);
     template<class StateSet>
     std::ostream& operator<<(std::ostream& out, NFA<StateSet>& nfa);
-    class Match{
-    public:
-        char* start;
-        char* end;
-        std::string str(){return std::string(start,end-start);}
-    };
     class RRegex{
         uint32_t states_n=0;
         template<class StateSet>
         NFA<StateSet> bracket_expression(const char* start,const char** cp2,uint32_t new_initial,int ps,const char *p,MemoryPool<StateSet>& mem_pool);
         template<class StateSet>
         NFA<StateSet> build_NFA(const char* p,unsigned int tr_table);
-        template<unsigned int k>
-        void alloc_BitSetNFA(const char* p);
-        size_t memory_pool_size;
-        void* memory_pool;
+        //template<class StateSet>
+        //NFA<StateSet> build_IterFactory(const char* p,unsigned int tr_table){
+        //    return typename NFA<StateSet>::IterFactory<StateSet>(std::move(build_NFA<StateSet>(p,tr_table)));
+        //};
     public:
-        std::unique_ptr<Executable> exec;
+        std::unique_ptr<IterFactoryBase> iter_factory;
         RRegex(const char* p);
-        bool is_match(const char* str){
-            exec->reset_all();
-            //*exec<<'\0';
-            while(*str) *exec<<*(str++);
-            return **exec&FLAG_ACCEPTING;
+        IteratorWrapper get_acceptance_iter(char* c){
+            return iter_factory->get_acceptance_iter(c);
         }
     };
 }

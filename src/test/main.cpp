@@ -21,14 +21,14 @@ int main(){
     //auto start_time = std::chrono::high_resolution_clock::now();
     RRegex r(pattern);
     
-    r.exec->print();
     
     auto start_time = std::chrono::high_resolution_clock::now();
-    bool is_match = r.is_match(text);
+    auto acceptance_iter = r.get_acceptance_iter(text)++;
+    bool is_match = (*acceptance_iter).has_value();
     auto end_time = std::chrono::high_resolution_clock::now();
+    acceptance_iter.print();
     std::cout << "is match? " << is_match << std::endl;
     std::cout<<"time: " <<std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms\n";
-    
     free(text);
     free(pattern);
     return 0;

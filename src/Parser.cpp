@@ -158,12 +158,14 @@ NFA<StateSet> RRegex::build_NFA(const char* p, unsigned int states_n){
     return new_nfa;
 }
 
-RRegex::RRegex(const char* p){
+RRegex::RRegex(const char* p2){
+    char* p = (char*)p2;
     states_n=build_NFA<NoStateSet>(p,0).size;
-    if(states_n>256)        exec=std::make_unique<NFA<Roaring>>(build_NFA<Roaring>(p,states_n));
-    else if(states_n>128)   exec=std::make_unique<NFA<BitSet<4>>>(build_NFA<BitSet<4>>(p,states_n));
-    else if(states_n>64)    exec=std::make_unique<NFA<BitSet<2>>>(build_NFA<BitSet<2>>(p,states_n));
-    else                    exec=std::make_unique<NFA<BitSet<1>>>(build_NFA<BitSet<1>>(p,states_n));
+#define CREATE_ITER_FAC(type) std::make_unique<NFA<type>::IterFactory>( NFA<type>::IterFactory(std::move(build_NFA<type>(p,states_n))))
+    if(states_n>256)      iter_factory=CREATE_ITER_FAC(Roaring);
+    else if(states_n>128) iter_factory=CREATE_ITER_FAC(BitSet<4>);
+    else if(states_n>64)  iter_factory=CREATE_ITER_FAC(BitSet<2>);
+    else                  iter_factory=CREATE_ITER_FAC(BitSet<1>);
     //exec->init(memory_pool, memory_pool_size, states_n);
 }
 //template<unsigned int k>
