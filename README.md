@@ -29,6 +29,12 @@ $ ./test_regex # test program to test the library
 # Now it will print the corresponding NFA
 # and all lazy matches
 ```
+If you are on NixOS don't run make directly. Instead execute the cc_nix shell script, which is there due to problems with the LTO-plugin not being included in ar.
+```
+$ ./cc_nix
+$ ./test_regex
+# as above
+```
 ## Features
 Currently implemented features include
  - Character escapes                      \
