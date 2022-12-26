@@ -14,13 +14,13 @@ bin/%.o: %.cpp
 bin/%.o: %.cc
 	LC_MESSAGES=en $(CXX) $(CXXFLAGS) -c -o $@ $^
 librregex.a:  $(OBJS)
-	$(AR) rcsT  $@ $^
+	gcc-ar rcs $@ $^
 test_regex: librregex.a
 	LC_MESSAGES=en $(CXX) $(CXXFLAGS) -I src/inc -c -o ./bin/main.o ./src/test/main.cpp
 	LC_MESSAGES=en $(CXX) -o $@ -flto ./bin/main.o librregex.a
 CRoaring:
 	git clone https://github.com/RoaringBitmap/CRoaring.git
-	cd CRoaring && ./amalgamation.sh
+	cd CRoaring && sed -i '1d' ./amalgamation.sh && ./amalgamation.sh
 clean:
 	rm -r bin/*
 .PHONY: clean doc
